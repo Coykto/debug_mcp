@@ -89,10 +89,44 @@ Get results from a previously executed Insights query.
 
 ## Configuration
 
-The MCP server uses environment variables for AWS authentication:
+The MCP server uses environment variables for configuration:
 
+### AWS Authentication
 - `AWS_PROFILE` - AWS profile name (optional, uses default if not set)
 - `AWS_REGION` - AWS region (default: us-east-1)
+
+### Tool Selection
+- `AWS_DEBUG_MCP_TOOLS` - Comma-separated list of tools to expose (optional, default: "all")
+
+**Available tools:**
+- `describe_log_groups`
+- `analyze_log_group`
+- `execute_log_insights_query`
+- `get_logs_insight_query_results`
+
+**Examples:**
+
+```json
+// Expose only specific tools
+"env": {
+  "AWS_PROFILE": "your-profile",
+  "AWS_REGION": "us-east-1",
+  "AWS_DEBUG_MCP_TOOLS": "describe_log_groups,execute_log_insights_query"
+}
+
+// Expose all tools (default)
+"env": {
+  "AWS_PROFILE": "your-profile",
+  "AWS_REGION": "us-east-1",
+  "AWS_DEBUG_MCP_TOOLS": "all"
+}
+
+// Expose all tools (AWS_DEBUG_MCP_TOOLS not set)
+"env": {
+  "AWS_PROFILE": "your-profile",
+  "AWS_REGION": "us-east-1"
+}
+```
 
 ## Development
 

@@ -116,7 +116,7 @@ This pattern mimics the "serena" MCP server, making it easy for teams to install
 
 ### Configuration in Claude Code
 
-Users add the server to their MCP configuration:
+Users add the server to their MCP configuration with optional tool filtering:
 ```json
 {
   "mcpServers": {
@@ -125,12 +125,21 @@ Users add the server to their MCP configuration:
       "args": ["--from", "git+https://github.com/username/aws-debug-mcp", "aws-debug-mcp"],
       "env": {
         "AWS_PROFILE": "your-profile-name",
-        "AWS_REGION": "us-east-1"
+        "AWS_REGION": "us-east-1",
+        "AWS_DEBUG_MCP_TOOLS": "describe_log_groups,execute_log_insights_query"
       }
     }
   }
 }
 ```
+
+**Environment Variables:**
+- `AWS_PROFILE` - AWS profile name
+- `AWS_REGION` - AWS region (default: us-east-1)
+- `AWS_DEBUG_MCP_TOOLS` - Comma-separated list of tools to expose (default: "all")
+  - Available tools: `describe_log_groups`, `analyze_log_group`, `execute_log_insights_query`, `get_logs_insight_query_results`
+  - Set to "all" or omit to expose all tools
+  - Set to comma-separated list to expose only specific tools
 
 ## Implementation Phases
 

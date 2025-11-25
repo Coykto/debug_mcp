@@ -42,7 +42,8 @@
       "cwd": "/Users/eb/PycharmProjects/AWS_debug_mcp",
       "env": {
         "AWS_PROFILE": "AdministratorAccess-381492197841",
-        "AWS_REGION": "us-east-1"
+        "AWS_REGION": "us-east-1",
+        "AWS_DEBUG_MCP_TOOLS": "describe_log_groups,execute_log_insights_query,get_logs_insight_query_results"
       }
     }
   }
