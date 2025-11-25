@@ -97,7 +97,7 @@ src/aws_debug_mcp/
 
 **AWS Authentication**: Environment-based using `AWS_PROFILE` and `AWS_REGION` variables passed through to upstream AWS MCP servers.
 
-**Tool Filtering**: 21+ tools available from three AWS MCPs. Filter via `AWS_DEBUG_MCP_TOOLS` environment variable.
+**Tool Filtering**: 26 tools available from three AWS MCPs. By default, exposes 10 core debugging tools (CloudWatch Logs + Step Functions). Filter via `AWS_DEBUG_MCP_TOOLS` environment variable.
 
 **CloudWatch (11 tools):**
 - Logs: `describe_log_groups`, `analyze_log_group`, `execute_log_insights_query`, `get_logs_insight_query_results`, `cancel_logs_insight_query`
@@ -145,8 +145,9 @@ Users add the server to their MCP configuration with optional tool filtering:
 **Environment Variables:**
 - `AWS_PROFILE` - AWS profile name
 - `AWS_REGION` - AWS region (default: us-east-1)
-- `AWS_DEBUG_MCP_TOOLS` - Comma-separated list of tools to expose (default: "all")
-  - Set to "all" or omit to expose all 21 tools
+- `AWS_DEBUG_MCP_TOOLS` - Comma-separated list of tools to expose (default: 10 core debugging tools)
+  - Default (if not set): CloudWatch Logs (5 tools) + Step Functions (5 tools)
+  - Set to "all" to expose all 26 tools
   - Set to comma-separated list to expose only specific tools
   - See available tool names in README.md
 

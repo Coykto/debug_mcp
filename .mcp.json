@@ -19,19 +19,6 @@
       ],
       "env": {}
     },
-    "awslabs.cloudwatch-mcp-server": {
-      "autoApprove": [],
-      "disabled": true,
-      "command": "uvx",
-      "args": [
-        "awslabs.cloudwatch-mcp-server@latest"
-      ],
-      "env": {
-        "AWS_PROFILE": "AdministratorAccess-381492197841",
-        "FASTMCP_LOG_LEVEL": "ERROR"
-      },
-      "transportType": "stdio"
-    },
     "aws-debug-mcp": {
       "type": "stdio",
       "command": "uvx",

@@ -150,15 +150,23 @@ You can also include the definition with execution details using `include_defini
 Filter which tools to expose using `AWS_DEBUG_MCP_TOOLS`:
 
 ```json
+// Default (if not set) - core debugging tools (10 tools)
+// CloudWatch Logs (5) + Step Functions (5)
+// Omit AWS_DEBUG_MCP_TOOLS to use this default
+
 // Minimal - only logs
 "AWS_DEBUG_MCP_TOOLS": "describe_log_groups,execute_log_insights_query,get_logs_insight_query_results"
 
 // Debugging focus - logs, metrics, alarms, ECS troubleshooting
 "AWS_DEBUG_MCP_TOOLS": "describe_log_groups,analyze_log_group,execute_log_insights_query,get_active_alarms,ecs_troubleshooting_tool,ecs_resource_management"
 
-// Expose all 26 tools (default)
+// Expose all 26 tools
 "AWS_DEBUG_MCP_TOOLS": "all"
 ```
+
+**Default tools** (when `AWS_DEBUG_MCP_TOOLS` is not set):
+- CloudWatch Logs: `describe_log_groups`, `analyze_log_group`, `execute_log_insights_query`, `get_logs_insight_query_results`, `cancel_logs_insight_query`
+- Step Functions: `list_state_machines`, `get_state_machine_definition`, `list_step_function_executions`, `get_step_function_execution_details`, `search_step_function_executions`
 
 **Available tool names:**
 

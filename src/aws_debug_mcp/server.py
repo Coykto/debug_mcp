@@ -10,8 +10,22 @@ mcp = FastMCP("aws-debug-mcp")
 
 # Get configured tools from environment variable
 # Format: comma-separated list like "describe_log_groups,analyze_log_group"
-# If not set, expose all tools by default
-configured_tools_str = os.getenv("AWS_DEBUG_MCP_TOOLS", "all")
+# If not set, expose core debugging tools by default
+# Set to "all" to expose all 26 tools
+DEFAULT_TOOLS = (
+    "describe_log_groups,"
+    "analyze_log_group,"
+    "execute_log_insights_query,"
+    "get_logs_insight_query_results,"
+    "cancel_logs_insight_query,"
+    "list_state_machines,"
+    "get_state_machine_definition,"
+    "list_step_function_executions,"
+    "get_step_function_execution_details,"
+    "search_step_function_executions"
+)
+
+configured_tools_str = os.getenv("AWS_DEBUG_MCP_TOOLS", DEFAULT_TOOLS)
 if configured_tools_str.lower() == "all":
     configured_tools = None  # None means expose all
 else:
