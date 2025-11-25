@@ -1,5 +1,6 @@
 """MCP proxy for wrapping AWS MCP servers."""
 import asyncio
+import json
 import os
 from contextlib import asynccontextmanager
 from typing import Any
@@ -15,6 +16,41 @@ class MCPProxy:
         self.cloudwatch_session: ClientSession | None = None
         self.aws_profile = os.getenv("AWS_PROFILE", "")
         self.aws_region = os.getenv("AWS_REGION", "us-east-1")
+
+    def _extract_content(self, result_content: list) -> dict | str:
+        """
+        Extract actual data from MCP result content.
+
+        MCP results are a list of content blocks. This extracts the text
+        from the first block and attempts to parse it as JSON.
+
+        Args:
+            result_content: List of content blocks from MCP call_tool result
+
+        Returns:
+            Parsed JSON dict if the content is JSON, otherwise the raw text string
+        """
+        if not result_content:
+            return {}
+
+        # Get the first content block
+        first_block = result_content[0]
+
+        # Extract text based on content block type
+        if hasattr(first_block, 'text'):
+            text = first_block.text
+        elif isinstance(first_block, dict) and 'text' in first_block:
+            text = first_block['text']
+        else:
+            # If we can't extract text, return the block as-is
+            return first_block
+
+        # Try to parse as JSON
+        try:
+            return json.loads(text)
+        except (json.JSONDecodeError, TypeError):
+            # If not JSON, return as string
+            return text
 
     @asynccontextmanager
     async def _connect_to_cloudwatch(self):
@@ -38,7 +74,7 @@ class MCPProxy:
         """Call a tool on the CloudWatch MCP server."""
         async with self._connect_to_cloudwatch() as session:
             result = await session.call_tool(tool_name, arguments)
-            return result.content
+            return self._extract_content(result.content)
 
     @asynccontextmanager
     async def _connect_to_ecs(self):
@@ -61,7 +97,7 @@ class MCPProxy:
         """Call a tool on the ECS MCP server."""
         async with self._connect_to_ecs() as session:
             result = await session.call_tool(tool_name, arguments)
-            return result.content
+            return self._extract_content(result.content)
 
     @asynccontextmanager
     async def _connect_to_stepfunctions(self):
@@ -84,7 +120,7 @@ class MCPProxy:
         """Call a tool on the Step Functions MCP server."""
         async with self._connect_to_stepfunctions() as session:
             result = await session.call_tool(tool_name, arguments)
-            return result.content
+            return self._extract_content(result.content)
 
 
 # Global proxy instance
