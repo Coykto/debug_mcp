@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 AWS Debug MCP is an open-source MCP (Model Context Protocol) server for debugging AWS distributed systems (Lambda, Step Functions, ECS) directly from Claude Code or any MCP client. The project aims to eliminate context switching between AWS console interfaces by bringing AWS debugging capabilities into AI coding assistants.
 
-**Current Status**: Phase 1 MVP Complete - CloudWatch Logs tools are implemented and working. The server is installable locally via `uv run aws-debug-mcp` and can be used in other projects via the local configuration or eventually via `uvx --from git+https://github.com/...`.
+**Current Status**: Phase 1 MVP Complete - CloudWatch Logs tools are implemented and working. The server is installable locally via `uv run aws-debug-mcp` and can be used in other projects via `uvx --from git+https://github.com/Coykto/AWS_debug_mcp`.
 
 ## Development Commands
 
@@ -97,11 +97,20 @@ src/aws_debug_mcp/
 
 **AWS Authentication**: Environment-based using `AWS_PROFILE` and `AWS_REGION` variables passed through to upstream AWS MCP servers.
 
-**Tool Filtering**: Only expose debugging tools needed for daily work. Currently exposing from CloudWatch MCP:
-- `describe_log_groups` - List log groups
-- `analyze_log_group` - Analyze logs for patterns/anomalies
-- `execute_log_insights_query` - Run Insights queries
-- `get_logs_insight_query_results` - Get query results
+**Tool Filtering**: 21+ tools available from three AWS MCPs. Filter via `AWS_DEBUG_MCP_TOOLS` environment variable.
+
+**CloudWatch (11 tools):**
+- Logs: `describe_log_groups`, `analyze_log_group`, `execute_log_insights_query`, `get_logs_insight_query_results`, `cancel_logs_insight_query`
+- Metrics: `get_metric_data`, `get_metric_metadata`, `get_recommended_metric_alarms`, `analyze_metric`
+- Alarms: `get_active_alarms`, `get_alarm_history`
+
+**ECS (10 tools):**
+- Deployment: `containerize_app`, `build_and_push_image_to_ecr`, `validate_ecs_express_mode_prerequisites`, `wait_for_service_ready`, `delete_app`
+- Troubleshooting: `ecs_troubleshooting_tool`, `ecs_resource_management`
+- Documentation: `aws_knowledge_aws___search_documentation`, `aws_knowledge_aws___read_documentation`, `aws_knowledge_aws___recommend`
+
+**Step Functions (Dynamic):**
+- Tools generated from your state machines (configure via `STATE_MACHINE_LIST` or `STATE_MACHINE_PREFIX`)
 
 **Read-Only Design**: All tools are read-only debugging operations. No CRUD or write operations to maintain safety and simplicity.
 
@@ -109,7 +118,7 @@ src/aws_debug_mcp/
 
 Designed to be installable via uvx directly from GitHub:
 ```bash
-uvx --from git+https://github.com/username/aws-debug-mcp aws-debug-mcp
+uvx --from git+https://github.com/Coykto/AWS_debug_mcp aws-debug-mcp
 ```
 
 This pattern mimics the "serena" MCP server, making it easy for teams to install without package registry publishing.
@@ -122,7 +131,7 @@ Users add the server to their MCP configuration with optional tool filtering:
   "mcpServers": {
     "aws-debug-mcp": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/username/aws-debug-mcp", "aws-debug-mcp"],
+      "args": ["--from", "git+https://github.com/Coykto/AWS_debug_mcp", "aws-debug-mcp"],
       "env": {
         "AWS_PROFILE": "your-profile-name",
         "AWS_REGION": "us-east-1",
@@ -137,9 +146,14 @@ Users add the server to their MCP configuration with optional tool filtering:
 - `AWS_PROFILE` - AWS profile name
 - `AWS_REGION` - AWS region (default: us-east-1)
 - `AWS_DEBUG_MCP_TOOLS` - Comma-separated list of tools to expose (default: "all")
-  - Available tools: `describe_log_groups`, `analyze_log_group`, `execute_log_insights_query`, `get_logs_insight_query_results`
-  - Set to "all" or omit to expose all tools
+  - Set to "all" or omit to expose all 21 tools
   - Set to comma-separated list to expose only specific tools
+  - See available tool names in README.md
+
+**Step Functions Configuration** (optional):
+- `STATE_MACHINE_LIST` - Comma-separated list of state machine names to expose
+- `STATE_MACHINE_PREFIX` - Auto-include state machines with this prefix
+- `STATE_MACHINE_TAG_KEY` + `STATE_MACHINE_TAG_VALUE` - Filter state machines by AWS tags
 
 ## Implementation Phases
 
@@ -169,34 +183,53 @@ Implementation pattern (to add more tools):
 
 ## Adding New Tools
 
-To expose additional tools from AWS MCP servers:
+See the "Development" section in README.md for a guide on adding new AWS MCPs and tools.
 
-### 1. Find the tool in the upstream AWS MCP
-Check the AWS MCP documentation for available tools:
-- [CloudWatch MCP Server](https://awslabs.github.io/mcp/servers/cloudwatch-mcp-server)
-- [Step Functions MCP Server](https://awslabs.github.io/mcp/servers/step-functions-mcp-server)
-- [Other AWS MCPs](https://awslabs.github.io/mcp/)
+Quick summary for adding tools from existing AWS MCP servers:
 
-### 2. Add proxy function in server.py
+### For CloudWatch (already connected):
+1. Add proxy function in `server.py`:
 ```python
-@mcp.tool()
-async def my_new_tool(arg1: str, arg2: int) -> dict:
-    """Tool description for Claude."""
-    return await proxy.call_cloudwatch_tool(
-        "upstream_tool_name",
-        {"arg1": arg1, "arg2": arg2}
-    )
+if should_expose_tool("new_tool_name"):
+    @mcp.tool()
+    async def new_tool_name(arg1: str) -> dict:
+        """Tool description for Claude."""
+        return await proxy.call_cloudwatch_tool("upstream_tool_name", {"arg1": arg1})
 ```
 
-### 3. For new AWS services (Step Functions, ECS, etc.)
-Add a new proxy method in `mcp_proxy.py`:
+### For new AWS services (Step Functions, ECS, Lambda):
+1. Add connection method in `mcp_proxy.py`:
 ```python
+@asynccontextmanager
+async def _connect_to_stepfunctions(self):
+    server_params = StdioServerParameters(
+        command="uvx",
+        args=["awslabs.step-functions-mcp-server@latest"],
+        env={"AWS_PROFILE": self.aws_profile, "AWS_REGION": self.aws_region}
+    )
+    async with stdio_client(server_params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            yield session
+
 async def call_stepfunctions_tool(self, tool_name: str, arguments: dict[str, Any]) -> Any:
-    """Call a tool on the Step Functions MCP server."""
     async with self._connect_to_stepfunctions() as session:
         result = await session.call_tool(tool_name, arguments)
         return result.content
 ```
+
+2. Add proxy functions in `server.py`:
+```python
+if should_expose_tool("describe_execution"):
+    @mcp.tool()
+    async def describe_execution(execution_arn: str) -> dict:
+        """Get Step Functions execution details."""
+        return await proxy.call_stepfunctions_tool("describe_execution", {"execution_arn": execution_arn})
+```
+
+**Resources**:
+- [AWS MCP Servers](https://awslabs.github.io/mcp/) - Find available MCPs and their tools
+- README.md - Step-by-step examples with Step Functions, ECS, Lambda (see Development section)
 
 ## Dependencies
 
@@ -248,9 +281,7 @@ Test locally before pushing by configuring in Claude Code with local path:
 ## Important Context
 
 ### Related Files
-- **BOOTSTRAP.md** - Complete technical implementation guide with full code examples for all modules
-- **QUICKSTART.md** - Step-by-step checklist for implementing the project from scratch
-- **README.md** - User-facing documentation and project goals
+- **README.md** - Complete user-facing documentation with installation, configuration, available tools, and development guide
 
 ### Design Philosophy
 - **Tight scope**: Start minimal, expand based on real usage

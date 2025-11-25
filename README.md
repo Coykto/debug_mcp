@@ -1,9 +1,9 @@
 # AWS Debug MCP
 
-**Status**: Phase 1 MVP Complete ✅
-**Version**: 0.1.0
+MCP server for debugging AWS distributed systems (Lambda, Step Functions, ECS) directly from Claude Code or any MCP client.
 
-Open-source MCP server for debugging AWS distributed systems (Lambda, Step Functions, ECS) directly from Claude Code or any MCP client.
+**Status**: ✅ Complete with 21+ tools from CloudWatch, ECS, and Step Functions
+**Repository**: https://github.com/Coykto/AWS_debug_mcp
 
 ## Quick Start
 
@@ -19,7 +19,7 @@ Add to your project's `.mcp.json`:
       "command": "uvx",
       "args": [
         "--from",
-        "git+https://github.com/YOUR_USERNAME/aws-debug-mcp",
+        "git+https://github.com/Coykto/AWS_debug_mcp",
         "aws-debug-mcp"
       ],
       "env": {
@@ -31,21 +31,42 @@ Add to your project's `.mcp.json`:
 }
 ```
 
-Replace:
-- `YOUR_USERNAME` with the actual GitHub username/org
-- `your-aws-profile-name` with your AWS profile name from `~/.aws/credentials`
-- `us-east-1` with your preferred AWS region
-
-### Prerequisites
-
+**Prerequisites:**
 - Python 3.11+
-- `uv` or `uvx` installed ([installation guide](https://docs.astral.sh/uv/))
-- AWS credentials configured (via `aws configure` or environment variables)
+- `uvx` installed ([installation guide](https://docs.astral.sh/uv/))
+- AWS credentials configured (`aws configure`)
+
+### What You Can Ask Claude
+
+**CloudWatch Logs:**
+- "List all Lambda log groups"
+- "Search for ERROR in /aws/lambda/my-function from the last hour"
+- "Analyze /aws/lambda/my-function logs for patterns"
+
+**CloudWatch Metrics & Alarms:**
+- "Show me Lambda invocation metrics for my-function from yesterday"
+- "What alarms are currently active?"
+- "Get recommended alarms for my Lambda function"
+
+**ECS Debugging:**
+- "Troubleshoot ECS service my-service in cluster my-cluster"
+- "Show me ECS task failures for my-service"
+- "List all running ECS tasks in my-cluster"
+
+**ECS Deployment:**
+- "Containerize my app in /path/to/app"
+- "Build and push Docker image to ECR"
+
+**AWS Documentation:**
+- "Search AWS docs for Lambda best practices"
+
+**Step Functions (if configured):**
+- "Execute MyStateMachine with input {...}"
 
 ## How It Works
 
-This MCP server acts as a **proxy/gateway** to AWS MCP servers. It:
-1. Spawns AWS MCP servers (like awslabs.cloudwatch-mcp-server) as subprocesses
+This MCP server acts as a **proxy/gateway** to AWS MCP servers:
+1. Spawns AWS MCP servers (awslabs.cloudwatch-mcp-server, awslabs.ecs-mcp-server, etc.) as subprocesses
 2. Forwards only the tools you select, hiding the rest
 3. Keeps your tool list minimal and focused on debugging
 
@@ -53,84 +74,114 @@ This MCP server acts as a **proxy/gateway** to AWS MCP servers. It:
 
 ## Available Tools
 
-### CloudWatch Logs (Phase 1 - Available Now)
+### CloudWatch (11 tools)
 
-#### `describe_log_groups`
-List CloudWatch log groups with optional prefix filtering.
+**Logs:**
+- `describe_log_groups` - List CloudWatch log groups
+- `analyze_log_group` - Analyze logs for anomalies and patterns
+- `execute_log_insights_query` - Run CloudWatch Insights queries
+- `get_logs_insight_query_results` - Get query results
+- `cancel_logs_insight_query` - Cancel running query
 
-**Example questions:**
-- "List all Lambda log groups"
-- "Show me ECS log groups"
+**Metrics:**
+- `get_metric_data` - Retrieve detailed metric data
+- `get_metric_metadata` - Get metric descriptions
+- `get_recommended_metric_alarms` - Get alarm recommendations
+- `analyze_metric` - Analyze metrics for trends
 
-#### `analyze_log_group`
-Analyze CloudWatch logs for anomalies, message patterns, and error patterns.
+**Alarms:**
+- `get_active_alarms` - List currently active alarms
+- `get_alarm_history` - Get alarm state change history
 
-**Example questions:**
-- "Analyze errors in /aws/lambda/my-function from the last hour"
-- "Find patterns in my-service logs"
+### ECS (10 tools)
 
-#### `execute_log_insights_query`
-Execute CloudWatch Insights queries.
+**Deployment:**
+- `containerize_app` - Generate Dockerfile and configs
+- `build_and_push_image_to_ecr` - Build and push to ECR
+- `validate_ecs_express_mode_prerequisites` - Verify IAM roles
+- `wait_for_service_ready` - Poll service status
+- `delete_app` - Remove deployment
 
-**Example questions:**
-- "Search for ERROR in /aws/lambda/my-function from the last hour"
-- "Run this Insights query: fields @timestamp, @message | filter @message like /exception/"
+**Troubleshooting:**
+- `ecs_troubleshooting_tool` - Diagnostics (events, task failures, logs, network)
+- `ecs_resource_management` - Manage clusters, services, tasks
 
-#### `get_logs_insight_query_results`
-Get results from a previously executed Insights query.
+**Documentation:**
+- `aws_knowledge_aws___search_documentation` - Search AWS docs
+- `aws_knowledge_aws___read_documentation` - Convert docs to markdown
+- `aws_knowledge_aws___recommend` - Get doc recommendations
 
-**Example:**
-- Used automatically after `execute_log_insights_query` to retrieve results
+### Step Functions (Dynamic)
 
-### Coming Soon (Phase 2)
-- Step Functions execution details
-- ECS task logs and failures
-- Lambda invocation logs
+Step Functions tools are **dynamically generated** from your state machines. Configure which state machines to expose:
+
+```json
+"env": {
+  "STATE_MACHINE_LIST": "MyStateMachine1,MyStateMachine2"
+}
+```
+
+See [Step Functions MCP docs](https://awslabs.github.io/mcp/servers/stepfunctions-tool-mcp-server) for details.
 
 ## Configuration
 
-The MCP server uses environment variables for configuration:
-
 ### AWS Authentication
-- `AWS_PROFILE` - AWS profile name (optional, uses default if not set)
-- `AWS_REGION` - AWS region (default: us-east-1)
-
-### Tool Selection
-- `AWS_DEBUG_MCP_TOOLS` - Comma-separated list of tools to expose (optional, default: "all")
-
-**Available tools:**
-- `describe_log_groups`
-- `analyze_log_group`
-- `execute_log_insights_query`
-- `get_logs_insight_query_results`
-
-**Examples:**
-
 ```json
-// Expose only specific tools
 "env": {
-  "AWS_PROFILE": "your-profile",
-  "AWS_REGION": "us-east-1",
-  "AWS_DEBUG_MCP_TOOLS": "describe_log_groups,execute_log_insights_query"
-}
-
-// Expose all tools (default)
-"env": {
-  "AWS_PROFILE": "your-profile",
-  "AWS_REGION": "us-east-1",
-  "AWS_DEBUG_MCP_TOOLS": "all"
-}
-
-// Expose all tools (AWS_DEBUG_MCP_TOOLS not set)
-"env": {
-  "AWS_PROFILE": "your-profile",
+  "AWS_PROFILE": "your-profile-name",
   "AWS_REGION": "us-east-1"
 }
 ```
 
-## Development
+### Tool Selection
 
-See [BOOTSTRAP.md](./BOOTSTRAP.md) for complete development guide.
+Filter which tools to expose using `AWS_DEBUG_MCP_TOOLS`:
+
+```json
+// Minimal - only logs
+"AWS_DEBUG_MCP_TOOLS": "describe_log_groups,execute_log_insights_query,get_logs_insight_query_results"
+
+// Debugging focus - logs, metrics, alarms, ECS troubleshooting
+"AWS_DEBUG_MCP_TOOLS": "describe_log_groups,analyze_log_group,execute_log_insights_query,get_active_alarms,ecs_troubleshooting_tool,ecs_resource_management"
+
+// Expose all 21 tools (default)
+"AWS_DEBUG_MCP_TOOLS": "all"
+```
+
+**Available tool names:**
+
+CloudWatch: `describe_log_groups`, `analyze_log_group`, `execute_log_insights_query`, `get_logs_insight_query_results`, `cancel_logs_insight_query`, `get_metric_data`, `get_metric_metadata`, `get_recommended_metric_alarms`, `analyze_metric`, `get_active_alarms`, `get_alarm_history`
+
+ECS: `containerize_app`, `build_and_push_image_to_ecr`, `validate_ecs_express_mode_prerequisites`, `wait_for_service_ready`, `delete_app`, `ecs_troubleshooting_tool`, `ecs_resource_management`, `aws_knowledge_aws___search_documentation`, `aws_knowledge_aws___read_documentation`, `aws_knowledge_aws___recommend`
+
+### Step Functions Configuration
+```json
+"env": {
+  "STATE_MACHINE_LIST": "StateMachine1,StateMachine2",
+  // OR
+  "STATE_MACHINE_PREFIX": "prod-",
+  // OR
+  "STATE_MACHINE_TAG_KEY": "Environment",
+  "STATE_MACHINE_TAG_VALUE": "Production"
+}
+```
+
+## Troubleshooting
+
+### Server won't start
+- Check AWS credentials: `aws sts get-caller-identity --profile YOUR_PROFILE`
+- Verify uvx is installed: `uvx --version`
+- Check Claude Code MCP logs in settings
+
+### Wrong AWS account
+- Update `AWS_PROFILE` in the env section
+- Make sure the profile exists in `~/.aws/credentials`
+
+### Too many tools in the list
+- Set `AWS_DEBUG_MCP_TOOLS` to only the tools you need
+- See available tool names above
+
+## Development
 
 ### Local Development
 
@@ -141,178 +192,65 @@ uv sync
 # Run the server
 uv run aws-debug-mcp
 
-# Run tests
+# Test
 uv run pytest
 ```
 
-## Background
+### Adding New AWS MCPs
 
-### Problem Statement
+To expose tools from other AWS MCP servers:
 
-Debugging distributed AWS applications is painful:
-- Manually clicking through CloudWatch console for logs
-- Switching between Step Functions, Lambda, and ECS interfaces
-- Time-consuming to correlate logs across services
-- No way to query AWS debugging info from AI coding assistants
+**1. Add connection to `src/aws_debug_mcp/mcp_proxy.py`:**
 
-This MCP server brings AWS debugging capabilities directly into Claude Code, eliminating context switching.
+```python
+@asynccontextmanager
+async def _connect_to_SERVICE(self):
+    server_params = StdioServerParameters(
+        command="uvx",
+        args=["awslabs.SERVICE-mcp-server@latest"],
+        env={"AWS_PROFILE": self.aws_profile, "AWS_REGION": self.aws_region}
+    )
+    async with stdio_client(server_params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            yield session
 
-### Current State
-
-Manual debugging workflow:
-1. Run `search_aws_executions.py` script to find Step Function executions
-2. Click AWS console link from script output
-3. Manually navigate to CloudWatch for logs
-4. Repeat for Lambda/ECS logs
-5. Try to correlate events manually
-
-### Desired State
-
-Ask Claude in Claude Code:
-- "Show me errors in the fireflies-processing function from last hour"
-- "What logs are related to Step Function execution xyz?"
-- "Find ECS task failures for my-service"
-
-Claude uses MCP tools to fetch and analyze logs directly.
-
-## Technical Approach
-
-### Architecture
-- **Language**: Python 3.10+
-- **MCP Framework**: FastMCP
-- **AWS SDK**: boto3
-- **Package Manager**: uv
-- **Installation**: `uvx --from git+https://github.com/you/aws-debug-mcp`
-
-### Modular Design
-```
-aws-debug-mcp/
-├── tools/
-│   ├── cloudwatch_logs.py    # Phase 1: MVP
-│   ├── step_functions.py     # Phase 2: Future
-│   └── ecs.py                 # Phase 2: Future
-└── aws/
-    ├── client_factory.py      # Environment-based auth
-    └── config.py
+async def call_SERVICE_tool(self, tool_name: str, arguments: dict[str, Any]) -> Any:
+    async with self._connect_to_SERVICE() as session:
+        result = await session.call_tool(tool_name, arguments)
+        return result.content
 ```
 
-### Key Features
-1. **Environment-based auth**: Team members configure via `AWS_PROFILE` env var
-2. **Installable like serena**: `uvx --from git+...` pattern
-3. **Selective tools**: Only expose tools needed for debugging (no CRUD operations)
-4. **Time-based correlation**: Search logs around Step Function execution times
+**2. Add proxy functions to `src/aws_debug_mcp/server.py`:**
 
-## Scope
+```python
+if should_expose_tool("your_tool_name"):
+    @mcp.tool()
+    async def your_tool_name(arg1: str) -> dict:
+        """Tool description for Claude."""
+        return await proxy.call_SERVICE_tool("upstream_tool_name", {"arg1": arg1})
+```
 
-### Phase 1: MVP (CloudWatch Logs)
-- ✅ `describe_log_groups` - List available log groups
-- ✅ `search_logs` - CloudWatch Insights queries
-- ✅ `get_logs_for_timerange` - Raw logs in time window
+**3. Test and use:**
 
-### Phase 2: Expand Services
-- ⏳ Step Functions execution details
-- ⏳ ECS task logs
-- ⏳ Lambda invocation logs
+```bash
+# Add to your AWS_DEBUG_MCP_TOOLS list
+"AWS_DEBUG_MCP_TOOLS": "your_tool_name,other_tools"
+```
 
-### Phase 3: Polish
-- ⏳ Comprehensive tests
-- ⏳ Error handling
-- ⏳ Community documentation
+**Resources:**
+- [AWS MCP Servers](https://awslabs.github.io/mcp/) - Find available MCPs and tools
+- [CloudWatch MCP](https://awslabs.github.io/mcp/servers/cloudwatch-mcp-server)
+- [ECS MCP](https://awslabs.github.io/mcp/servers/ecs-mcp-server)
+- [Step Functions MCP](https://awslabs.github.io/mcp/servers/stepfunctions-tool-mcp-server)
 
-### Out of Scope (for now)
-- AI-powered log analysis
-- Multi-cloud support (AWS only)
-- Write operations (read-only debugging)
+## Team Sharing
 
-## Success Metrics
+Share with your team:
+1. They update `AWS_PROFILE` with their own profile name
+2. Optionally adjust `AWS_REGION` if different
+3. Optionally customize `AWS_DEBUG_MCP_TOOLS` to their preference
 
-1. **Personal productivity**: Reduce debugging time by 50%
-2. **Team adoption**: 3+ team members using it within 1 month
-3. **Open source**: 10+ GitHub stars, 1+ external contributor
-4. **Learning**: Deepen MCP development expertise for Barley work
+## License
 
-## Dependencies & Constraints
-
-### Technical Dependencies
-- AWS credentials (profile-based or env vars)
-- Python 3.10+
-- uvx/uv installed
-
-### Organizational Dependencies
-- Time to develop (estimate: 2-3 days for MVP)
-- Barley team's MCP roadmap (alignment opportunity)
-
-### Constraints
-- Must not interfere with Barley team priorities
-- Keep scope tight (no feature creep)
-- Sustainable maintenance burden
-
-## Risks & Mitigation
-
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|------------|
-| AWS changes APIs | M | M | Use stable boto3, version constraints |
-| Low adoption | M | L | Start with personal use, expand organically |
-| Maintenance burden | M | M | Keep scope minimal, good docs |
-| Competes with AWS MCPs | H | L | Focus on debugging-specific UX, not generic AWS access |
-
-## Implementation Phases
-
-### Phase 1: Bootstrap & MVP ✅ COMPLETE
-- [x] Create bootstrap documentation
-- [x] Implement project structure
-- [x] Implement CloudWatch Logs tools
-- [x] Test locally with Claude Code
-- [x] Write README and examples
-- [ ] Push to GitHub repo
-- [ ] Tag v0.1.0 release
-
-**Success criteria**: Can search CloudWatch logs from Claude Code ✅
-
-### Phase 2: Expand Tools (1-2 days)
-- [ ] Add Step Functions tools
-- [ ] Add ECS tools
-- [ ] Add Lambda tools
-- [ ] Improve time correlation logic
-
-**Success criteria**: Can trace request across services
-
-### Phase 3: Open Source Ready (1-2 days)
-- [ ] Comprehensive tests (pytest)
-- [ ] CI/CD setup (GitHub Actions)
-- [ ] CONTRIBUTING.md
-- [ ] License (MIT)
-- [ ] Example use cases
-- [ ] Blog post / LinkedIn article
-
-**Success criteria**: External developers can contribute
-
-## Next Steps
-
-1. **Immediate**: Review BOOTSTRAP.md, validate approach
-2. **Create GitHub repo**: `github.com/your-username/aws-debug-mcp`
-3. **Initialize project**: Follow bootstrap guide
-4. **Implement MVP**: CloudWatch Logs tools
-5. **Test locally**: Configure in Claude Code
-6. **Share with team**: Get early feedback
-
-## Related Projects
-
-- **Barley MCP Development**: This project teaches MCP patterns applicable to Barley
-- **search_aws_executions.py**: Existing Step Functions debugging script (can complement)
-- **Serena**: Reference implementation for uvx installation pattern
-
-## Learning Outcomes
-
-By building this, you'll gain:
-- Deep MCP server development expertise
-- Python packaging/distribution skills (uv, pyproject.toml)
-- Open source project management
-- FastMCP framework knowledge
-- Reusable patterns for Barley's MCP roadmap
-
----
-
-**Owner**: Evgenii Basmov
-**Repository**: (to be created)
-**Status**: Ready to bootstrap - see [BOOTSTRAP.md](./BOOTSTRAP.md)
+MIT License - See LICENSE file

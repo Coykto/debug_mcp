@@ -40,6 +40,52 @@ class MCPProxy:
             result = await session.call_tool(tool_name, arguments)
             return result.content
 
+    @asynccontextmanager
+    async def _connect_to_ecs(self):
+        """Connect to AWS ECS MCP server."""
+        server_params = StdioServerParameters(
+            command="uvx",
+            args=["awslabs.ecs-mcp-server@latest"],
+            env={
+                "AWS_PROFILE": self.aws_profile,
+                "AWS_REGION": self.aws_region,
+            },
+        )
+
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                yield session
+
+    async def call_ecs_tool(self, tool_name: str, arguments: dict[str, Any]) -> Any:
+        """Call a tool on the ECS MCP server."""
+        async with self._connect_to_ecs() as session:
+            result = await session.call_tool(tool_name, arguments)
+            return result.content
+
+    @asynccontextmanager
+    async def _connect_to_stepfunctions(self):
+        """Connect to AWS Step Functions MCP server."""
+        server_params = StdioServerParameters(
+            command="uvx",
+            args=["awslabs.stepfunctions-tool-mcp-server@latest"],
+            env={
+                "AWS_PROFILE": self.aws_profile,
+                "AWS_REGION": self.aws_region,
+            },
+        )
+
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                yield session
+
+    async def call_stepfunctions_tool(self, tool_name: str, arguments: dict[str, Any]) -> Any:
+        """Call a tool on the Step Functions MCP server."""
+        async with self._connect_to_stepfunctions() as session:
+            result = await session.call_tool(tool_name, arguments)
+            return result.content
+
 
 # Global proxy instance
 proxy = MCPProxy()
