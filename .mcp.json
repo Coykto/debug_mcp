@@ -34,12 +34,12 @@
     },
     "aws-debug-mcp": {
       "type": "stdio",
-      "command": "uv",
+      "command": "uvx",
       "args": [
-        "run",
+        "--from",
+        "git+https://github.com/Coykto/AWS_debug_mcp",
         "aws-debug-mcp"
       ],
-      "cwd": "/Users/eb/PycharmProjects/AWS_debug_mcp",
       "env": {
         "AWS_PROFILE": "AdministratorAccess-381492197841",
         "AWS_REGION": "us-west-2",
