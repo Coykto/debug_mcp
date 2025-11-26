@@ -15,7 +15,7 @@ class MCPProxy:
     def __init__(self):
         self.cloudwatch_session: ClientSession | None = None
         self.aws_profile = os.getenv("AWS_PROFILE", "")
-        self.aws_region = os.getenv("AWS_REGION", "us-east-1")
+        self.aws_region = os.getenv("AWS_REGION", "")
 
     def _extract_content(self, result_content: list) -> dict | str:
         """
