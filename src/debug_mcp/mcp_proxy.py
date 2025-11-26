@@ -52,17 +52,25 @@ class MCPProxy:
             # If not JSON, return as string
             return text
 
+    def _get_env(self, **overrides: str) -> dict[str, str]:
+        """Get environment dict with AWS credentials, merging with current env."""
+        env = os.environ.copy()
+        env.update(
+            {
+                "AWS_PROFILE": self.aws_profile,
+                "AWS_REGION": self.aws_region,
+                **overrides,
+            }
+        )
+        return env
+
     @asynccontextmanager
     async def _connect_to_cloudwatch(self):
         """Connect to AWS CloudWatch MCP server."""
         server_params = StdioServerParameters(
             command="uvx",
             args=["awslabs.cloudwatch-mcp-server@latest"],
-            env={
-                "AWS_PROFILE": self.aws_profile,
-                "AWS_REGION": self.aws_region,
-                "FASTMCP_LOG_LEVEL": "ERROR",
-            },
+            env=self._get_env(FASTMCP_LOG_LEVEL="ERROR"),
         )
 
         async with stdio_client(server_params) as (read, write):
@@ -82,10 +90,7 @@ class MCPProxy:
         server_params = StdioServerParameters(
             command="uvx",
             args=["awslabs.ecs-mcp-server@latest"],
-            env={
-                "AWS_PROFILE": self.aws_profile,
-                "AWS_REGION": self.aws_region,
-            },
+            env=self._get_env(),
         )
 
         async with stdio_client(server_params) as (read, write):
@@ -105,10 +110,7 @@ class MCPProxy:
         server_params = StdioServerParameters(
             command="uvx",
             args=["awslabs.stepfunctions-tool-mcp-server@latest"],
-            env={
-                "AWS_PROFILE": self.aws_profile,
-                "AWS_REGION": self.aws_region,
-            },
+            env=self._get_env(),
         )
 
         async with stdio_client(server_params) as (read, write):
