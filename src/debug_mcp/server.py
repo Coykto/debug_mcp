@@ -1,8 +1,13 @@
 """Main MCP server setup - proxies AWS MCP servers with selective tool exposure."""
-import os
-from fastmcp import FastMCP
-from .mcp_proxy import proxy
 
+import os
+from datetime import UTC
+
+from fastmcp import FastMCP
+
+from .mcp_proxy import proxy
+from .tools.langsmith import get_langsmith_debugger
+from .tools.stepfunctions import StepFunctionsDebugger
 
 # Initialize MCP server
 mcp = FastMCP("debug-mcp")
@@ -48,6 +53,7 @@ def should_expose_tool(tool_name: str) -> bool:
 
 # CloudWatch Logs Tools - proxied from awslabs.cloudwatch-mcp-server
 if should_expose_tool("describe_log_groups"):
+
     @mcp.tool()
     async def describe_log_groups(log_group_name_prefix: str = "") -> dict:
         """
@@ -56,20 +62,13 @@ if should_expose_tool("describe_log_groups"):
         Args:
             log_group_name_prefix: Filter log groups by prefix (e.g., /aws/lambda/, /ecs/)
         """
-        return await proxy.call_cloudwatch_tool(
-            "describe_log_groups",
-            {"log_group_name_prefix": log_group_name_prefix}
-        )
+        return await proxy.call_cloudwatch_tool("describe_log_groups", {"log_group_name_prefix": log_group_name_prefix})
 
 
 if should_expose_tool("analyze_log_group"):
+
     @mcp.tool()
-    async def analyze_log_group(
-        log_group_name: str,
-        start_time: str,
-        end_time: str,
-        filter_pattern: str = ""
-    ) -> dict:
+    async def analyze_log_group(log_group_name: str, start_time: str, end_time: str, filter_pattern: str = "") -> dict:
         """
         Analyze CloudWatch logs for anomalies, message patterns, and error patterns.
 
@@ -91,13 +90,14 @@ if should_expose_tool("analyze_log_group"):
 
 
 if should_expose_tool("execute_log_insights_query"):
+
     @mcp.tool()
     async def execute_log_insights_query(
         log_group_names: list[str],
         query_string: str,
         start_time: str,
         end_time: str,
-        limit: int = 100
+        limit: int = 100,
     ) -> dict:
         """
         Execute CloudWatch Logs Insights query.
@@ -117,11 +117,12 @@ if should_expose_tool("execute_log_insights_query"):
                 "start_time": start_time,
                 "end_time": end_time,
                 "limit": limit,
-            }
+            },
         )
 
 
 if should_expose_tool("get_logs_insight_query_results"):
+
     @mcp.tool()
     async def get_logs_insight_query_results(query_id: str) -> dict:
         """
@@ -130,13 +131,11 @@ if should_expose_tool("get_logs_insight_query_results"):
         Args:
             query_id: Query ID from execute_log_insights_query
         """
-        return await proxy.call_cloudwatch_tool(
-            "get_logs_insight_query_results",
-            {"query_id": query_id}
-        )
+        return await proxy.call_cloudwatch_tool("get_logs_insight_query_results", {"query_id": query_id})
 
 
 if should_expose_tool("cancel_logs_insight_query"):
+
     @mcp.tool()
     async def cancel_logs_insight_query(query_id: str) -> dict:
         """
@@ -145,14 +144,12 @@ if should_expose_tool("cancel_logs_insight_query"):
         Args:
             query_id: Query ID to cancel
         """
-        return await proxy.call_cloudwatch_tool(
-            "cancel_logs_insight_query",
-            {"query_id": query_id}
-        )
+        return await proxy.call_cloudwatch_tool("cancel_logs_insight_query", {"query_id": query_id})
 
 
 # CloudWatch Metrics Tools
 if should_expose_tool("get_metric_data"):
+
     @mcp.tool()
     async def get_metric_data(
         metric_namespace: str,
@@ -161,7 +158,7 @@ if should_expose_tool("get_metric_data"):
         statistic: str,
         start_time: str,
         end_time: str,
-        period: int = 300
+        period: int = 300,
     ) -> dict:
         """
         Retrieve detailed CloudWatch metric data for any CloudWatch metric.
@@ -184,17 +181,15 @@ if should_expose_tool("get_metric_data"):
                 "statistic": statistic,
                 "start_time": start_time,
                 "end_time": end_time,
-                "period": period
-            }
+                "period": period,
+            },
         )
 
 
 if should_expose_tool("get_metric_metadata"):
+
     @mcp.tool()
-    async def get_metric_metadata(
-        metric_namespace: str,
-        metric_name: str
-    ) -> dict:
+    async def get_metric_metadata(metric_namespace: str, metric_name: str) -> dict:
         """
         Get comprehensive metadata about a specific CloudWatch metric.
 
@@ -204,20 +199,14 @@ if should_expose_tool("get_metric_metadata"):
         """
         return await proxy.call_cloudwatch_tool(
             "get_metric_metadata",
-            {
-                "metric_namespace": metric_namespace,
-                "metric_name": metric_name
-            }
+            {"metric_namespace": metric_namespace, "metric_name": metric_name},
         )
 
 
 if should_expose_tool("get_recommended_metric_alarms"):
+
     @mcp.tool()
-    async def get_recommended_metric_alarms(
-        metric_namespace: str,
-        metric_name: str,
-        dimensions: dict
-    ) -> dict:
+    async def get_recommended_metric_alarms(metric_namespace: str, metric_name: str, dimensions: dict) -> dict:
         """
         Get recommended alarms for a CloudWatch metric based on best practices and statistical analysis.
 
@@ -231,19 +220,16 @@ if should_expose_tool("get_recommended_metric_alarms"):
             {
                 "metric_namespace": metric_namespace,
                 "metric_name": metric_name,
-                "dimensions": dimensions
-            }
+                "dimensions": dimensions,
+            },
         )
 
 
 if should_expose_tool("analyze_metric"):
+
     @mcp.tool()
     async def analyze_metric(
-        metric_namespace: str,
-        metric_name: str,
-        dimensions: dict,
-        start_time: str,
-        end_time: str
+        metric_namespace: str, metric_name: str, dimensions: dict, start_time: str, end_time: str
     ) -> dict:
         """
         Analyze CloudWatch metric data to determine trend, seasonality, and statistical properties.
@@ -262,13 +248,14 @@ if should_expose_tool("analyze_metric"):
                 "metric_name": metric_name,
                 "dimensions": dimensions,
                 "start_time": start_time,
-                "end_time": end_time
-            }
+                "end_time": end_time,
+            },
         )
 
 
 # CloudWatch Alarms Tools
 if should_expose_tool("get_active_alarms"):
+
     @mcp.tool()
     async def get_active_alarms() -> dict:
         """
@@ -278,6 +265,7 @@ if should_expose_tool("get_active_alarms"):
 
 
 if should_expose_tool("get_alarm_history"):
+
     @mcp.tool()
     async def get_alarm_history(alarm_name: str) -> dict:
         """
@@ -286,14 +274,12 @@ if should_expose_tool("get_alarm_history"):
         Args:
             alarm_name: CloudWatch alarm name
         """
-        return await proxy.call_cloudwatch_tool(
-            "get_alarm_history",
-            {"alarm_name": alarm_name}
-        )
+        return await proxy.call_cloudwatch_tool("get_alarm_history", {"alarm_name": alarm_name})
 
 
 # ECS Tools - proxied from awslabs.ecs-mcp-server
 if should_expose_tool("containerize_app"):
+
     @mcp.tool()
     async def containerize_app(app_directory: str) -> dict:
         """
@@ -302,19 +288,13 @@ if should_expose_tool("containerize_app"):
         Args:
             app_directory: Path to application source code directory
         """
-        return await proxy.call_ecs_tool(
-            "containerize_app",
-            {"app_directory": app_directory}
-        )
+        return await proxy.call_ecs_tool("containerize_app", {"app_directory": app_directory})
 
 
 if should_expose_tool("build_and_push_image_to_ecr"):
+
     @mcp.tool()
-    async def build_and_push_image_to_ecr(
-        app_directory: str,
-        image_tag: str,
-        repository_name: str
-    ) -> dict:
+    async def build_and_push_image_to_ecr(app_directory: str, image_tag: str, repository_name: str) -> dict:
         """
         Create ECR infrastructure, build Docker images, and push them to the repository.
 
@@ -328,17 +308,16 @@ if should_expose_tool("build_and_push_image_to_ecr"):
             {
                 "app_directory": app_directory,
                 "image_tag": image_tag,
-                "repository_name": repository_name
-            }
+                "repository_name": repository_name,
+            },
         )
 
 
 if should_expose_tool("validate_ecs_express_mode_prerequisites"):
+
     @mcp.tool()
     async def validate_ecs_express_mode_prerequisites(
-        task_execution_role_name: str,
-        infrastructure_role_name: str,
-        ecr_image_uri: str
+        task_execution_role_name: str, infrastructure_role_name: str, ecr_image_uri: str
     ) -> dict:
         """
         Verify that required IAM roles and Docker images exist before ECS deployment.
@@ -353,12 +332,13 @@ if should_expose_tool("validate_ecs_express_mode_prerequisites"):
             {
                 "task_execution_role_name": task_execution_role_name,
                 "infrastructure_role_name": infrastructure_role_name,
-                "ecr_image_uri": ecr_image_uri
-            }
+                "ecr_image_uri": ecr_image_uri,
+            },
         )
 
 
 if should_expose_tool("wait_for_service_ready"):
+
     @mcp.tool()
     async def wait_for_service_ready(cluster_name: str, service_name: str) -> dict:
         """
@@ -369,15 +349,12 @@ if should_expose_tool("wait_for_service_ready"):
             service_name: ECS service name
         """
         return await proxy.call_ecs_tool(
-            "wait_for_service_ready",
-            {
-                "cluster_name": cluster_name,
-                "service_name": service_name
-            }
+            "wait_for_service_ready", {"cluster_name": cluster_name, "service_name": service_name}
         )
 
 
 if should_expose_tool("delete_app"):
+
     @mcp.tool()
     async def delete_app(service_name: str, cluster_name: str) -> dict:
         """
@@ -387,23 +364,18 @@ if should_expose_tool("delete_app"):
             service_name: ECS service name
             cluster_name: ECS cluster name
         """
-        return await proxy.call_ecs_tool(
-            "delete_app",
-            {
-                "service_name": service_name,
-                "cluster_name": cluster_name
-            }
-        )
+        return await proxy.call_ecs_tool("delete_app", {"service_name": service_name, "cluster_name": cluster_name})
 
 
 if should_expose_tool("ecs_troubleshooting_tool"):
+
     @mcp.tool()
     async def ecs_troubleshooting_tool(
         action: str,
         cluster_name: str = "",
         service_name: str = "",
         task_id: str = "",
-        stack_name: str = ""
+        stack_name: str = "",
     ) -> dict:
         """
         Consolidated diagnostics tool for ECS issue resolution.
@@ -432,12 +404,10 @@ if should_expose_tool("ecs_troubleshooting_tool"):
 
 
 if should_expose_tool("ecs_resource_management"):
+
     @mcp.tool()
     async def ecs_resource_management(
-        resource_type: str,
-        operation: str,
-        resource_identifier: str = "",
-        configuration: dict = {}
+        resource_type: str, operation: str, resource_identifier: str = "", configuration: dict = {}
     ) -> dict:
         """
         Comprehensive access to ECS resources for monitoring and management.
@@ -451,10 +421,7 @@ if should_expose_tool("ecs_resource_management"):
             resource_identifier: Resource identifier (varies by operation)
             configuration: Configuration details (for create/update operations)
         """
-        args = {
-            "resource_type": resource_type,
-            "operation": operation
-        }
+        args = {"resource_type": resource_type, "operation": operation}
         if resource_identifier:
             args["resource_identifier"] = resource_identifier
         if configuration:
@@ -464,6 +431,7 @@ if should_expose_tool("ecs_resource_management"):
 
 
 if should_expose_tool("aws_knowledge_aws___search_documentation"):
+
     @mcp.tool()
     async def aws_knowledge_aws___search_documentation(query: str, topic_area: str = "") -> dict:
         """
@@ -481,6 +449,7 @@ if should_expose_tool("aws_knowledge_aws___search_documentation"):
 
 
 if should_expose_tool("aws_knowledge_aws___read_documentation"):
+
     @mcp.tool()
     async def aws_knowledge_aws___read_documentation(documentation_url: str) -> dict:
         """
@@ -490,12 +459,12 @@ if should_expose_tool("aws_knowledge_aws___read_documentation"):
             documentation_url: AWS documentation page URL
         """
         return await proxy.call_ecs_tool(
-            "aws_knowledge_aws___read_documentation",
-            {"documentation_url": documentation_url}
+            "aws_knowledge_aws___read_documentation", {"documentation_url": documentation_url}
         )
 
 
 if should_expose_tool("aws_knowledge_aws___recommend"):
+
     @mcp.tool()
     async def aws_knowledge_aws___recommend(topic: str) -> dict:
         """
@@ -504,21 +473,17 @@ if should_expose_tool("aws_knowledge_aws___recommend"):
         Args:
             topic: Topic or content area
         """
-        return await proxy.call_ecs_tool(
-            "aws_knowledge_aws___recommend",
-            {"topic": topic}
-        )
+        return await proxy.call_ecs_tool("aws_knowledge_aws___recommend", {"topic": topic})
 
 
 # Step Functions Debugging Tools - using boto3 directly
 # These tools provide comprehensive debugging capabilities for Step Functions executions
-from .tools.stepfunctions import StepFunctionsDebugger
-
 # Initialize debugger (uses AWS_REGION from environment)
 sf_debugger = StepFunctionsDebugger()
 
 
 if should_expose_tool("list_state_machines"):
+
     @mcp.tool()
     async def list_state_machines(max_results: int = 100) -> dict:
         """
@@ -528,19 +493,17 @@ if should_expose_tool("list_state_machines"):
             max_results: Maximum number of state machines to return (default: 100)
         """
         state_machines = sf_debugger.list_state_machines(max_results=max_results)
-        return {
-            "state_machines": state_machines,
-            "count": len(state_machines)
-        }
+        return {"state_machines": state_machines, "count": len(state_machines)}
 
 
 if should_expose_tool("list_step_function_executions"):
+
     @mcp.tool()
     async def list_step_function_executions(
         state_machine_arn: str,
         status_filter: str = "",
         max_results: int = 100,
-        hours_back: int = 168
+        hours_back: int = 168,
     ) -> dict:
         """
         List executions for a Step Functions state machine.
@@ -555,16 +518,17 @@ if should_expose_tool("list_step_function_executions"):
             state_machine_arn=state_machine_arn,
             status_filter=status_filter if status_filter else None,
             max_results=max_results,
-            hours_back=hours_back
+            hours_back=hours_back,
         )
         return {
             "executions": executions,
             "count": len(executions),
-            "state_machine_arn": state_machine_arn
+            "state_machine_arn": state_machine_arn,
         }
 
 
 if should_expose_tool("get_state_machine_definition"):
+
     @mcp.tool()
     async def get_state_machine_definition(state_machine_arn: str) -> dict:
         """
@@ -580,11 +544,9 @@ if should_expose_tool("get_state_machine_definition"):
 
 
 if should_expose_tool("get_step_function_execution_details"):
+
     @mcp.tool()
-    async def get_step_function_execution_details(
-        execution_arn: str,
-        include_definition: bool = False
-    ) -> dict:
+    async def get_step_function_execution_details(execution_arn: str, include_definition: bool = False) -> dict:
         """
         Get detailed information about a specific Step Functions execution.
 
@@ -601,6 +563,7 @@ if should_expose_tool("get_step_function_execution_details"):
 
 
 if should_expose_tool("search_step_function_executions"):
+
     @mcp.tool()
     async def search_step_function_executions(
         state_machine_arn: str,
@@ -610,7 +573,7 @@ if should_expose_tool("search_step_function_executions"):
         status_filter: str = "",
         max_results: int = 50,
         hours_back: int = 168,
-        include_definition: bool = False
+        include_definition: bool = False,
     ) -> dict:
         """
         Search Step Functions executions with advanced filtering.
@@ -636,7 +599,7 @@ if should_expose_tool("search_step_function_executions"):
             status_filter=status_filter if status_filter else None,
             max_results=max_results,
             hours_back=hours_back,
-            include_definition=include_definition
+            include_definition=include_definition,
         )
         return {
             "executions": executions,
@@ -645,22 +608,17 @@ if should_expose_tool("search_step_function_executions"):
                 "state_name": state_name or None,
                 "input_pattern": input_pattern or None,
                 "output_pattern": output_pattern or None,
-                "status": status_filter or None
-            }
+                "status": status_filter or None,
+            },
         }
 
 
 # LangSmith Debugging Tools - using langsmith SDK
 # Supports multiple environments via AWS Secrets Manager or .env file
-from .tools.langsmith import get_langsmith_debugger
-
-
 if should_expose_tool("list_langsmith_projects"):
+
     @mcp.tool()
-    async def list_langsmith_projects(
-        environment: str,
-        limit: int = 100
-    ) -> dict:
+    async def list_langsmith_projects(environment: str, limit: int = 100) -> dict:
         """
         List available LangSmith projects.
 
@@ -677,11 +635,12 @@ if should_expose_tool("list_langsmith_projects"):
             "environment": environment,
             "projects": projects,
             "count": len(projects),
-            "default_project": debugger.default_project
+            "default_project": debugger.default_project,
         }
 
 
 if should_expose_tool("list_langsmith_runs"):
+
     @mcp.tool()
     async def list_langsmith_runs(
         environment: str,
@@ -690,7 +649,7 @@ if should_expose_tool("list_langsmith_runs"):
         is_root: bool = True,
         error_only: bool = False,
         hours_back: int = 24,
-        limit: int = 100
+        limit: int = 100,
     ) -> dict:
         """
         List runs/traces from a LangSmith project.
@@ -704,11 +663,11 @@ if should_expose_tool("list_langsmith_runs"):
             hours_back: Number of hours to look back (default: 24)
             limit: Maximum number of runs to return (default: 100)
         """
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
 
         debugger = get_langsmith_debugger(environment)
 
-        start_time = datetime.now(timezone.utc) - timedelta(hours=hours_back)
+        start_time = datetime.now(UTC) - timedelta(hours=hours_back)
 
         runs = debugger.list_runs(
             project_name=project_name if project_name else None,
@@ -716,7 +675,7 @@ if should_expose_tool("list_langsmith_runs"):
             is_root=is_root,
             error=True if error_only else None,
             start_time=start_time,
-            limit=limit
+            limit=limit,
         )
 
         return {
@@ -728,18 +687,15 @@ if should_expose_tool("list_langsmith_runs"):
                 "run_type": run_type or None,
                 "is_root": is_root,
                 "error_only": error_only,
-                "hours_back": hours_back
-            }
+                "hours_back": hours_back,
+            },
         }
 
 
 if should_expose_tool("get_langsmith_run_details"):
+
     @mcp.tool()
-    async def get_langsmith_run_details(
-        environment: str,
-        run_id: str,
-        include_children: bool = True
-    ) -> dict:
+    async def get_langsmith_run_details(environment: str, run_id: str, include_children: bool = True) -> dict:
         """
         Get detailed information about a specific LangSmith run/trace.
 
@@ -751,70 +707,63 @@ if should_expose_tool("get_langsmith_run_details"):
         debugger = get_langsmith_debugger(environment)
         details = debugger.get_run_details(run_id, include_children=include_children)
 
-        return {
-            "environment": environment,
-            "run": details
-        }
+        return {"environment": environment, "run": details}
 
 
 if should_expose_tool("search_langsmith_runs"):
+
     @mcp.tool()
     async def search_langsmith_runs(
         environment: str,
+        search_text: str,
         project_name: str = "",
-        query: str = "",
-        run_type: str = "",
-        error_only: bool = False,
-        min_latency: float = 0,
-        max_latency: float = 0,
-        tags: str = "",
         hours_back: int = 24,
-        limit: int = 50
+        limit: int = 50,
+        include_children: bool = True,
     ) -> dict:
         """
-        Search LangSmith runs with advanced filtering.
+        Search for LangSmith conversations containing specific text content.
+
+        PURPOSE: This is a lightweight search tool designed to find conversations
+        that contain a specific string. It returns only minimal match information
+        to avoid large responses. Use this to locate a conversation, then use
+        get_langsmith_run_details to retrieve full details.
+
+        IMPORTANT - Use Specific Search Strings:
+        - GOOD: "Error code XYZ-12345", "user@specific-email.com", "order_id: 98765"
+        - BAD: "error", "failed", "user" (too generic, will match many runs)
+
+        The more unique your search text, the faster and more accurate results.
 
         Args:
             environment: Environment to query ('prod', 'dev', 'local')
+            search_text: The text to search for (case-insensitive). Use unique
+                        identifiers, error codes, or specific phrases for best results.
             project_name: Project name (uses default from credentials if empty)
-            query: Text query to search in run names
-            run_type: Filter by type: chain, llm, tool, retriever, embedding
-            error_only: If True, return only errored runs
-            min_latency: Minimum latency in seconds (0 = no minimum)
-            max_latency: Maximum latency in seconds (0 = no maximum)
-            tags: Comma-separated list of tags to filter by
             hours_back: Number of hours to look back (default: 24)
-            limit: Maximum number of runs to return (default: 50)
+            limit: Maximum runs to search through (default: 50)
+            include_children: Search in child runs too (default: True)
+
+        Returns:
+            List of matches with run_id, context snippet, and link to full details
         """
         debugger = get_langsmith_debugger(environment)
 
-        # Parse tags
-        tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
-
-        runs = debugger.search_runs(
+        matches = debugger.find_conversation_by_content(
+            search_text=search_text,
             project_name=project_name if project_name else None,
-            query=query if query else None,
-            run_type=run_type if run_type else None,
-            error=True if error_only else None,
-            min_latency=min_latency if min_latency > 0 else None,
-            max_latency=max_latency if max_latency > 0 else None,
-            tags=tag_list,
             hours_back=hours_back,
-            limit=limit
+            limit=limit,
+            include_children=include_children,
         )
 
         return {
             "environment": environment,
             "project": project_name or debugger.default_project,
-            "runs": runs,
-            "count": len(runs),
-            "filters": {
-                "query": query or None,
-                "run_type": run_type or None,
-                "error_only": error_only,
-                "min_latency": min_latency if min_latency > 0 else None,
-                "max_latency": max_latency if max_latency > 0 else None,
-                "tags": tag_list,
-                "hours_back": hours_back
-            }
+            "search_text": search_text,
+            "matches": matches,
+            "match_count": len(matches),
+            "runs_searched": limit,
+            "hours_back": hours_back,
+            "tip": "Use get_langsmith_run_details with a run_id to get full conversation details",
         }

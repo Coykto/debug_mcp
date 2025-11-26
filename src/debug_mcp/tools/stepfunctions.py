@@ -11,7 +11,7 @@ import json
 import os
 import re
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import boto3
@@ -56,9 +56,7 @@ class StepFunctionsDebugger:
 
         return state_machines
 
-    def generate_execution_link(
-        self, execution_arn: str, region: str | None = None
-    ) -> str:
+    def generate_execution_link(self, execution_arn: str, region: str | None = None) -> str:
         """
         Generate AWS console link for an execution.
 
@@ -93,7 +91,7 @@ class StepFunctionsDebugger:
             List of execution metadata including name, ARN, status, dates, console link
         """
         executions = []
-        cutoff_date = datetime.now(timezone.utc) - timedelta(hours=hours_back)
+        cutoff_date = datetime.now(UTC) - timedelta(hours=hours_back)
 
         paginator = self.sfn_client.get_paginator("list_executions")
         pagination_params = {
@@ -285,9 +283,7 @@ class StepFunctionsDebugger:
                 states = details["states"]
 
                 # Apply filters
-                if self._matches_filters(
-                    states, state_name, input_pattern, output_pattern
-                ):
+                if self._matches_filters(states, state_name, input_pattern, output_pattern):
                     # Merge details into execution
                     execution.update(details)
                     # Add definition if requested
@@ -408,9 +404,7 @@ class StepFunctionsDebugger:
 
         return result
 
-    def _extract_resources_from_definition(
-        self, definition: dict[str, Any]
-    ) -> dict[str, list[str]]:
+    def _extract_resources_from_definition(self, definition: dict[str, Any]) -> dict[str, list[str]]:
         """
         Extract Lambda ARNs and other resources from the state machine definition.
 
@@ -481,9 +475,7 @@ class StepFunctionsDebugger:
 
         return resources
 
-    def get_execution_details_with_definition(
-        self, execution_arn: str
-    ) -> dict[str, Any]:
+    def get_execution_details_with_definition(self, execution_arn: str) -> dict[str, Any]:
         """
         Get execution details along with the state machine definition.
 

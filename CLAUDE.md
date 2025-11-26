@@ -38,15 +38,10 @@ uv run pytest tests/test_cloudwatch_logs.py
 ```
 
 ### Code Quality
+Pre-commit handles linting and formatting automatically. Setup:
 ```bash
-# Lint code with ruff
-uv run ruff check src/
-
-# Format code with ruff
-uv run ruff format src/
-
-# Type checking with mypy
-uv run mypy src/
+uv sync --dev
+uv run pre-commit install
 ```
 
 ### Manual Testing
@@ -70,8 +65,7 @@ src/debug_mcp/
 ├── server.py              # Main MCP server with proxied tool registrations
 ├── mcp_proxy.py           # MCP proxy client for connecting to AWS MCPs
 ├── __main__.py            # Entry point for CLI execution
-├── tools/                 # Future: additional tool modules if needed
-└── utils/                 # Future: shared utilities if needed
+└── tools/                 # Tool implementations (stepfunctions.py, langsmith.py)
 ```
 
 **Key Files**:
@@ -249,6 +243,7 @@ if should_expose_tool("describe_execution"):
 - `pytest-cov>=4.0.0` - Coverage reporting
 - `ruff>=0.1.0` - Linting and formatting
 - `mypy>=1.0.0` - Static type checking
+- `pre-commit>=3.0.0` - Git hooks for automated linting/formatting
 
 **Package Management**: uv (modern Python package manager)
 

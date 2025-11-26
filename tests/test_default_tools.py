@@ -1,6 +1,6 @@
 """Test default tool configuration."""
+
 import os
-import pytest
 
 
 def test_default_tools_list():
@@ -12,8 +12,8 @@ def test_default_tools_list():
 
     try:
         # Import dynamically to ensure we get fresh values
-        import importlib
         import sys
+
         if "debug_mcp.server" in sys.modules:
             del sys.modules["debug_mcp.server"]
 
@@ -39,9 +39,7 @@ def test_default_tools_list():
         default_tool_set = set(tool.strip() for tool in DEFAULT_TOOLS.split(",") if tool.strip())
 
         assert default_tool_set == expected_tools, (
-            f"DEFAULT_TOOLS mismatch.\n"
-            f"Expected: {sorted(expected_tools)}\n"
-            f"Got: {sorted(default_tool_set)}"
+            f"DEFAULT_TOOLS mismatch.\n" f"Expected: {sorted(expected_tools)}\n" f"Got: {sorted(default_tool_set)}"
         )
 
         # Verify configured_tools matches DEFAULT_TOOLS when env var not set
@@ -61,8 +59,8 @@ def test_all_tools_configuration():
     os.environ["DEBUG_MCP_TOOLS"] = "all"
 
     try:
-        import importlib
         import sys
+
         if "debug_mcp.server" in sys.modules:
             del sys.modules["debug_mcp.server"]
 
@@ -84,8 +82,8 @@ def test_custom_tools_configuration():
     os.environ["DEBUG_MCP_TOOLS"] = "describe_log_groups,list_state_machines"
 
     try:
-        import importlib
         import sys
+
         if "debug_mcp.server" in sys.modules:
             del sys.modules["debug_mcp.server"]
 

@@ -15,12 +15,11 @@ Supports multiple environments:
 
 import json
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import boto3
 from langsmith import Client
-
 
 # Cache for debugger instances per environment
 _debugger_cache: dict[str, "LangSmithDebugger"] = {}
@@ -140,15 +139,9 @@ class LangSmithDebugger:
             secret_data = json.loads(response["SecretString"])
 
             # Extract LangSmith/LangChain credentials
-            self._api_key = secret_data.get("LANGCHAIN_API_KEY") or secret_data.get(
-                "LANGSMITH_API_KEY"
-            )
-            self._api_url = secret_data.get("LANGCHAIN_ENDPOINT") or secret_data.get(
-                "LANGSMITH_ENDPOINT"
-            )
-            self._default_project = secret_data.get("LANGCHAIN_PROJECT") or secret_data.get(
-                "LANGSMITH_PROJECT"
-            )
+            self._api_key = secret_data.get("LANGCHAIN_API_KEY") or secret_data.get("LANGSMITH_API_KEY")
+            self._api_url = secret_data.get("LANGCHAIN_ENDPOINT") or secret_data.get("LANGSMITH_ENDPOINT")
+            self._default_project = secret_data.get("LANGCHAIN_PROJECT") or secret_data.get("LANGSMITH_PROJECT")
 
         except Exception:
             # Silently fail - will fall back to env vars
@@ -194,14 +187,10 @@ class LangSmithDebugger:
                 {
                     "name": project.name,
                     "id": str(project.id),
-                    "created_at": (
-                        project.created_at.isoformat() if project.created_at else None
-                    ),
+                    "created_at": (project.created_at.isoformat() if project.created_at else None),
                     "description": project.description,
                     "reference_dataset_id": (
-                        str(project.reference_dataset_id)
-                        if project.reference_dataset_id
-                        else None
+                        str(project.reference_dataset_id) if project.reference_dataset_id else None
                     ),
                 }
             )
@@ -268,9 +257,7 @@ class LangSmithDebugger:
 
         return runs
 
-    def get_run_details(
-        self, run_id: str, include_children: bool = False
-    ) -> dict[str, Any]:
+    def get_run_details(self, run_id: str, include_children: bool = False) -> dict[str, Any]:
         """
         Get detailed information about a specific run.
 
@@ -296,36 +283,40 @@ class LangSmithDebugger:
 
         return result
 
-    def search_runs(
+    def find_conversation_by_content(
         self,
+        search_text: str,
         project_name: str | None = None,
-        query: str | None = None,
-        run_type: str | None = None,
-        error: bool | None = None,
-        min_latency: float | None = None,
-        max_latency: float | None = None,
-        tags: list[str] | None = None,
-        metadata_filter: dict[str, str] | None = None,
         hours_back: int = 24,
         limit: int = 50,
+        include_children: bool = True,
     ) -> list[dict[str, Any]]:
         """
-        Search runs with advanced filtering criteria.
+        Search for conversations containing specific text content.
+
+        This is a lightweight search tool designed to find conversations that
+        contain a specific string in their inputs or outputs. It returns only
+        minimal information (run ID, match status, context snippet) to avoid
+        large responses.
+
+        IMPORTANT: Use the most specific and unique search string possible to
+        minimize false positives. For example:
+        - Good: "Error code XYZ-12345" or "user@specific-email.com"
+        - Bad: "error" or "failed" (too generic, will match many runs)
+
+        After finding a matching run, use get_langsmith_run_details to retrieve
+        the full conversation details.
 
         Args:
+            search_text: The exact text to search for in conversation content.
+                        Case-insensitive. Use unique identifiers when possible.
             project_name: Project name (defaults to configured default project)
-            query: Text query to search in run names
-            run_type: Filter by run type
-            error: Filter by error status
-            min_latency: Minimum latency in seconds
-            max_latency: Maximum latency in seconds
-            tags: Filter by tags (runs must have ALL specified tags)
-            metadata_filter: Filter by metadata key-value pairs
-            hours_back: Number of hours to look back
-            limit: Maximum number of runs to return
+            hours_back: Number of hours to look back (default: 24)
+            limit: Maximum number of runs to search through (default: 50)
+            include_children: If True, also search in child runs (default: True)
 
         Returns:
-            List of matching runs
+            List of matches with run_id, matched (bool), and context snippet
         """
         project = project_name or self._default_project
         if not project:
@@ -334,49 +325,124 @@ class LangSmithDebugger:
                 "LANGCHAIN_PROJECT environment variable."
             )
 
-        # Build filter string
-        filter_parts = []
-
-        if min_latency is not None:
-            filter_parts.append(f"gt(latency, {min_latency})")
-        if max_latency is not None:
-            filter_parts.append(f"lt(latency, {max_latency})")
-        if tags:
-            for tag in tags:
-                filter_parts.append(f'has(tags, "{tag}")')
-        if metadata_filter:
-            for key, value in metadata_filter.items():
-                filter_parts.append(f'eq(metadata_key, "{key}", "{value}")')
-
-        filter_str = " and ".join(filter_parts) if filter_parts else None
-
         # Calculate time range
-        start_time = datetime.now(timezone.utc) - timedelta(hours=hours_back)
+        end_time = datetime.now(UTC)
+        start_time = end_time - timedelta(hours=hours_back)
 
-        kwargs: dict[str, Any] = {
-            "project_name": project,
-            "limit": limit,
-            "start_time": start_time,
-        }
+        # Get root runs first (top-level conversations)
+        runs = list(
+            self.client.list_runs(
+                project_name=project,
+                is_root=True,
+                start_time=start_time,
+                end_time=end_time,
+                limit=limit,
+            )
+        )
 
-        if run_type:
-            kwargs["run_type"] = run_type
-        if error is not None:
-            kwargs["error"] = error
-        if filter_str:
-            kwargs["filter"] = filter_str
+        results = []
+        search_lower = search_text.lower()
 
-        runs = []
-        for run in self.client.list_runs(**kwargs):
-            # Additional client-side filtering for query
-            if query:
-                run_name = run.name or ""
-                if query.lower() not in run_name.lower():
-                    continue
+        for run in runs:
+            match_info = self._search_run_for_text(run, search_lower, include_children)
+            if match_info["matched"]:
+                results.append(
+                    {
+                        "run_id": str(run.id),
+                        "run_name": run.name,
+                        "matched": True,
+                        "match_location": match_info["location"],
+                        "context_snippet": match_info["snippet"],
+                        "start_time": run.start_time.isoformat() if run.start_time else None,
+                        "link": self.get_run_url(str(run.id)),
+                    }
+                )
 
-            runs.append(self._serialize_run(run))
+        return results
 
-        return runs
+    def _search_run_for_text(
+        self,
+        run: Any,
+        search_lower: str,
+        include_children: bool,
+    ) -> dict[str, Any]:
+        """
+        Search a single run (and optionally its children) for text content.
+
+        Returns:
+            Dict with matched (bool), location (str), and snippet (str)
+        """
+        # Search in inputs
+        if run.inputs:
+            match = self._search_dict_for_text(run.inputs, search_lower)
+            if match:
+                return {
+                    "matched": True,
+                    "location": "inputs",
+                    "snippet": match,
+                }
+
+        # Search in outputs
+        if run.outputs:
+            match = self._search_dict_for_text(run.outputs, search_lower)
+            if match:
+                return {
+                    "matched": True,
+                    "location": "outputs",
+                    "snippet": match,
+                }
+
+        # Search in children if requested
+        if include_children:
+            for child in self.client.list_runs(
+                parent_run_id=run.id,
+                limit=100,
+            ):
+                child_match = self._search_run_for_text(child, search_lower, include_children=False)
+                if child_match["matched"]:
+                    return {
+                        "matched": True,
+                        "location": f"child:{child.name}:{child_match['location']}",
+                        "snippet": child_match["snippet"],
+                    }
+
+        return {"matched": False, "location": None, "snippet": None}
+
+    def _search_dict_for_text(
+        self,
+        data: dict[str, Any] | list | str | Any,
+        search_lower: str,
+        max_snippet_len: int = 150,
+    ) -> str | None:
+        """
+        Recursively search a dict/list/string for text content.
+
+        Returns:
+            A context snippet around the match, or None if no match
+        """
+        if isinstance(data, str):
+            if search_lower in data.lower():
+                # Find the match position and extract context
+                pos = data.lower().find(search_lower)
+                start = max(0, pos - 50)
+                end = min(len(data), pos + len(search_lower) + 50)
+                snippet = data[start:end]
+                if start > 0:
+                    snippet = "..." + snippet
+                if end < len(data):
+                    snippet = snippet + "..."
+                return snippet[:max_snippet_len]
+        elif isinstance(data, dict):
+            for value in data.values():
+                match = self._search_dict_for_text(value, search_lower, max_snippet_len)
+                if match:
+                    return match
+        elif isinstance(data, list):
+            for item in data:
+                match = self._search_dict_for_text(item, search_lower, max_snippet_len)
+                if match:
+                    return match
+        return None
 
     def get_run_url(self, run_id: str) -> str:
         """

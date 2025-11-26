@@ -1,4 +1,5 @@
 """Entry point for debug-mcp."""
+
 from .server import mcp
 
 

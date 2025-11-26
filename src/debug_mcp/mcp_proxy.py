@@ -1,5 +1,5 @@
 """MCP proxy for wrapping AWS MCP servers."""
-import asyncio
+
 import json
 import os
 from contextlib import asynccontextmanager
@@ -37,10 +37,10 @@ class MCPProxy:
         first_block = result_content[0]
 
         # Extract text based on content block type
-        if hasattr(first_block, 'text'):
+        if hasattr(first_block, "text"):
             text = first_block.text
-        elif isinstance(first_block, dict) and 'text' in first_block:
-            text = first_block['text']
+        elif isinstance(first_block, dict) and "text" in first_block:
+            text = first_block["text"]
         else:
             # If we can't extract text, return the block as-is
             return first_block

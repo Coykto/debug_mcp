@@ -1,10 +1,11 @@
 """Tests for MCP proxy content extraction."""
-import pytest
+
 from debug_mcp.mcp_proxy import MCPProxy
 
 
 class MockContentBlock:
     """Mock MCP content block with text attribute."""
+
     def __init__(self, text):
         self.text = text
 
@@ -14,7 +15,7 @@ def test_extract_content_from_dict_content_block():
     proxy = MCPProxy()
 
     # This is the format we see in the error - list with dict containing 'text' key
-    content = [{'type': 'text', 'text': '{"queryId": "test123", "status": "Complete"}'}]
+    content = [{"type": "text", "text": '{"queryId": "test123", "status": "Complete"}'}]
     result = proxy._extract_content(content)
 
     assert isinstance(result, dict)
@@ -36,11 +37,11 @@ def test_extract_content_plain_text():
     """Test extracting plain text (not JSON)."""
     proxy = MCPProxy()
 
-    content = [{'type': 'text', 'text': 'Plain text response'}]
+    content = [{"type": "text", "text": "Plain text response"}]
     result = proxy._extract_content(content)
 
     assert isinstance(result, str)
-    assert result == 'Plain text response'
+    assert result == "Plain text response"
 
 
 def test_extract_content_empty_list():
@@ -57,25 +58,25 @@ def test_extract_content_malformed_json():
     """Test handling malformed JSON - should return as string."""
     proxy = MCPProxy()
 
-    content = [{'type': 'text', 'text': '{invalid json}'}]
+    content = [{"type": "text", "text": "{invalid json}"}]
     result = proxy._extract_content(content)
 
     assert isinstance(result, str)
-    assert result == '{invalid json}'
+    assert result == "{invalid json}"
 
 
 def test_extract_content_error_response():
     """Test extracting error response (as seen in the user's error)."""
     proxy = MCPProxy()
 
-    error_text = '''{
+    error_text = """{
   "queryId": "",
   "status": "Error",
   "message": "Error executing CloudWatch Logs Insights query",
   "results": []
-}'''
+}"""
 
-    content = [{'type': 'text', 'text': error_text}]
+    content = [{"type": "text", "text": error_text}]
     result = proxy._extract_content(content)
 
     assert isinstance(result, dict)
