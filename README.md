@@ -1,9 +1,9 @@
-# AWS Debug MCP
+# Debug MCP
 
-MCP server for debugging AWS distributed systems (Lambda, Step Functions, ECS) directly from Claude Code or any MCP client.
+MCP server for debugging distributed systems (starting with AWS: Lambda, Step Functions, ECS) directly from Claude Code or any MCP client.
 
 **Status**: ✅ Complete with 26 tools from CloudWatch, ECS, and Step Functions
-**Repository**: https://github.com/Coykto/AWS_debug_mcp
+**Repository**: https://github.com/Coykto/debug_mcp
 
 ## Quick Start
 
@@ -14,13 +14,13 @@ Add to your project's `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "aws-debug-mcp": {
+    "debug-mcp": {
       "type": "stdio",
       "command": "uvx",
       "args": [
         "--from",
-        "git+https://github.com/Coykto/AWS_debug_mcp",
-        "aws-debug-mcp"
+        "git+https://github.com/Coykto/debug_mcp",
+        "debug-mcp"
       ],
       "env": {
         "AWS_PROFILE": "your-aws-profile-name",
@@ -147,24 +147,24 @@ You can also include the definition with execution details using `include_defini
 
 ### Tool Selection
 
-Filter which tools to expose using `AWS_DEBUG_MCP_TOOLS`:
+Filter which tools to expose using `DEBUG_MCP_TOOLS`:
 
 ```json
 // Default (if not set) - core debugging tools (10 tools)
 // CloudWatch Logs (5) + Step Functions (5)
-// Omit AWS_DEBUG_MCP_TOOLS to use this default
+// Omit DEBUG_MCP_TOOLS to use this default
 
 // Minimal - only logs
-"AWS_DEBUG_MCP_TOOLS": "describe_log_groups,execute_log_insights_query,get_logs_insight_query_results"
+"DEBUG_MCP_TOOLS": "describe_log_groups,execute_log_insights_query,get_logs_insight_query_results"
 
 // Debugging focus - logs, metrics, alarms, ECS troubleshooting
-"AWS_DEBUG_MCP_TOOLS": "describe_log_groups,analyze_log_group,execute_log_insights_query,get_active_alarms,ecs_troubleshooting_tool,ecs_resource_management"
+"DEBUG_MCP_TOOLS": "describe_log_groups,analyze_log_group,execute_log_insights_query,get_active_alarms,ecs_troubleshooting_tool,ecs_resource_management"
 
 // Expose all 26 tools
-"AWS_DEBUG_MCP_TOOLS": "all"
+"DEBUG_MCP_TOOLS": "all"
 ```
 
-**Default tools** (when `AWS_DEBUG_MCP_TOOLS` is not set):
+**Default tools** (when `DEBUG_MCP_TOOLS` is not set):
 - CloudWatch Logs: `describe_log_groups`, `analyze_log_group`, `execute_log_insights_query`, `get_logs_insight_query_results`, `cancel_logs_insight_query`
 - Step Functions: `list_state_machines`, `get_state_machine_definition`, `list_step_function_executions`, `get_step_function_execution_details`, `search_step_function_executions`
 
@@ -188,7 +188,7 @@ Step Functions: `list_state_machines`, `get_state_machine_definition`, `list_ste
 - Make sure the profile exists in `~/.aws/credentials`
 
 ### Too many tools in the list
-- Set `AWS_DEBUG_MCP_TOOLS` to only the tools you need
+- Set `DEBUG_MCP_TOOLS` to only the tools you need
 - See available tool names above
 
 ## Development
@@ -200,7 +200,7 @@ Step Functions: `list_state_machines`, `get_state_machine_definition`, `list_ste
 uv sync
 
 # Run the server
-uv run aws-debug-mcp
+uv run debug-mcp
 
 # Test
 uv run pytest
@@ -210,7 +210,7 @@ uv run pytest
 
 To expose tools from other AWS MCP servers:
 
-**1. Add connection to `src/aws_debug_mcp/mcp_proxy.py`:**
+**1. Add connection to `src/debug_mcp/mcp_proxy.py`:**
 
 ```python
 @asynccontextmanager
@@ -231,7 +231,7 @@ async def call_SERVICE_tool(self, tool_name: str, arguments: dict[str, Any]) -> 
         return result.content
 ```
 
-**2. Add proxy functions to `src/aws_debug_mcp/server.py`:**
+**2. Add proxy functions to `src/debug_mcp/server.py`:**
 
 ```python
 if should_expose_tool("your_tool_name"):
@@ -244,8 +244,8 @@ if should_expose_tool("your_tool_name"):
 **3. Test and use:**
 
 ```bash
-# Add to your AWS_DEBUG_MCP_TOOLS list
-"AWS_DEBUG_MCP_TOOLS": "your_tool_name,other_tools"
+# Add to your DEBUG_MCP_TOOLS list
+"DEBUG_MCP_TOOLS": "your_tool_name,other_tools"
 ```
 
 **Resources:**
@@ -259,7 +259,7 @@ if should_expose_tool("your_tool_name"):
 Share with your team:
 1. They update `AWS_PROFILE` with their own profile name
 2. Optionally adjust `AWS_REGION` if different
-3. Optionally customize `AWS_DEBUG_MCP_TOOLS` to their preference
+3. Optionally customize `DEBUG_MCP_TOOLS` to their preference
 
 ## License
 

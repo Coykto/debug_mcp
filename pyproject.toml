@@ -1,5 +1,5 @@
 [project]
-name = "aws-debug-mcp"
+name = "debug-mcp"
 version = "0.1.0"
 description = "MCP server for debugging AWS distributed systems"
 authors = [
@@ -24,7 +24,7 @@ dev = [
 ]
 
 [project.scripts]
-aws-debug-mcp = "aws_debug_mcp.__main__:main"
+debug-mcp = "debug_mcp.__main__:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -5,7 +5,7 @@ from .mcp_proxy import proxy
 
 
 # Initialize MCP server
-mcp = FastMCP("aws-debug-mcp")
+mcp = FastMCP("debug-mcp")
 
 
 # Get configured tools from environment variable
@@ -25,7 +25,7 @@ DEFAULT_TOOLS = (
     "search_step_function_executions"
 )
 
-configured_tools_str = os.getenv("AWS_DEBUG_MCP_TOOLS", DEFAULT_TOOLS)
+configured_tools_str = os.getenv("DEBUG_MCP_TOOLS", DEFAULT_TOOLS)
 if configured_tools_str.lower() == "all":
     configured_tools = None  # None means expose all
 else:

@@ -1,6 +1,6 @@
 """Tests for MCP proxy content extraction."""
 import pytest
-from aws_debug_mcp.mcp_proxy import MCPProxy
+from debug_mcp.mcp_proxy import MCPProxy
 
 
 class MockContentBlock:

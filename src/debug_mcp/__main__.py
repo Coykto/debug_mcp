@@ -1,4 +1,4 @@
-"""Entry point for aws-debug-mcp."""
+"""Entry point for debug-mcp."""
 from .server import mcp
 
 

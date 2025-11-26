@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AWS Debug MCP is an open-source MCP (Model Context Protocol) server for debugging AWS distributed systems (Lambda, Step Functions, ECS) directly from Claude Code or any MCP client. The project aims to eliminate context switching between AWS console interfaces by bringing AWS debugging capabilities into AI coding assistants.
+Debug MCP is an open-source MCP (Model Context Protocol) server for debugging distributed systems (starting with AWS: Lambda, Step Functions, ECS) directly from Claude Code or any MCP client. The project aims to eliminate context switching between console interfaces by bringing debugging capabilities into AI coding assistants.
 
-**Current Status**: Phase 1 MVP Complete - CloudWatch Logs tools are implemented and working. The server is installable locally via `uv run aws-debug-mcp` and can be used in other projects via `uvx --from git+https://github.com/Coykto/AWS_debug_mcp`.
+**Current Status**: Phase 1 MVP Complete - CloudWatch Logs tools are implemented and working. The server is installable locally via `uv run debug-mcp` and can be used in other projects via `uvx --from git+https://github.com/Coykto/debug_mcp`.
 
 ## Development Commands
 
@@ -19,10 +19,10 @@ uv sync
 uv sync --dev
 
 # Run the MCP server locally
-uv run aws-debug-mcp
+uv run debug-mcp
 
 # Run in development mode from project root
-uv run python -m aws_debug_mcp
+uv run python -m debug_mcp
 ```
 
 ### Testing
@@ -31,7 +31,7 @@ uv run python -m aws_debug_mcp
 uv run pytest
 
 # Run tests with coverage
-uv run pytest --cov=src/aws_debug_mcp
+uv run pytest --cov=src/debug_mcp
 
 # Run specific test file
 uv run pytest tests/test_cloudwatch_logs.py
@@ -53,8 +53,8 @@ uv run mypy src/
 ```bash
 # Test AWS client factory in Python REPL
 uv run python
->>> from aws_debug_mcp.aws.client_factory import AWSClientFactory
->>> from aws_debug_mcp.tools.cloudwatch_logs import CloudWatchLogsTools
+>>> from debug_mcp.aws.client_factory import AWSClientFactory
+>>> from debug_mcp.tools.cloudwatch_logs import CloudWatchLogsTools
 >>> factory = AWSClientFactory()
 >>> tools = CloudWatchLogsTools(factory)
 >>> tools.describe_log_groups(prefix="/aws/lambda/")
@@ -66,7 +66,7 @@ uv run python
 The project follows src-layout with a simple proxy design:
 
 ```
-src/aws_debug_mcp/
+src/debug_mcp/
 ├── server.py              # Main MCP server with proxied tool registrations
 ├── mcp_proxy.py           # MCP proxy client for connecting to AWS MCPs
 ├── __main__.py            # Entry point for CLI execution
@@ -97,7 +97,7 @@ src/aws_debug_mcp/
 
 **AWS Authentication**: Environment-based using `AWS_PROFILE` and `AWS_REGION` variables passed through to upstream AWS MCP servers.
 
-**Tool Filtering**: 26 tools available from three AWS MCPs. By default, exposes 10 core debugging tools (CloudWatch Logs + Step Functions). Filter via `AWS_DEBUG_MCP_TOOLS` environment variable.
+**Tool Filtering**: 26 tools available from three AWS MCPs. By default, exposes 10 core debugging tools (CloudWatch Logs + Step Functions). Filter via `DEBUG_MCP_TOOLS` environment variable.
 
 **CloudWatch (11 tools):**
 - Logs: `describe_log_groups`, `analyze_log_group`, `execute_log_insights_query`, `get_logs_insight_query_results`, `cancel_logs_insight_query`
@@ -118,7 +118,7 @@ src/aws_debug_mcp/
 
 Designed to be installable via uvx directly from GitHub:
 ```bash
-uvx --from git+https://github.com/Coykto/AWS_debug_mcp aws-debug-mcp
+uvx --from git+https://github.com/Coykto/debug_mcp debug-mcp
 ```
 
 This pattern mimics the "serena" MCP server, making it easy for teams to install without package registry publishing.
@@ -129,13 +129,13 @@ Users add the server to their MCP configuration with optional tool filtering:
 ```json
 {
   "mcpServers": {
-    "aws-debug-mcp": {
+    "debug-mcp": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/Coykto/AWS_debug_mcp", "aws-debug-mcp"],
+      "args": ["--from", "git+https://github.com/Coykto/debug_mcp", "debug-mcp"],
       "env": {
         "AWS_PROFILE": "your-profile-name",
         "AWS_REGION": "us-east-1",
-        "AWS_DEBUG_MCP_TOOLS": "describe_log_groups,execute_log_insights_query"
+        "DEBUG_MCP_TOOLS": "describe_log_groups,execute_log_insights_query"
       }
     }
   }
@@ -145,7 +145,7 @@ Users add the server to their MCP configuration with optional tool filtering:
 **Environment Variables:**
 - `AWS_PROFILE` - AWS profile name
 - `AWS_REGION` - AWS region (default: us-east-1)
-- `AWS_DEBUG_MCP_TOOLS` - Comma-separated list of tools to expose (default: 10 core debugging tools)
+- `DEBUG_MCP_TOOLS` - Comma-separated list of tools to expose (default: 10 core debugging tools)
   - Default (if not set): CloudWatch Logs (5 tools) + Step Functions (5 tools)
   - Set to "all" to expose all 26 tools
   - Set to comma-separated list to expose only specific tools
@@ -270,10 +270,10 @@ Test locally before pushing by configuring in Claude Code with local path:
 ```json
 {
   "mcpServers": {
-    "aws-debug-mcp-local": {
+    "debug-mcp-local": {
       "command": "uv",
-      "args": ["run", "aws-debug-mcp"],
-      "cwd": "/full/path/to/aws-debug-mcp"
+      "args": ["run", "debug-mcp"],
+      "cwd": "/full/path/to/debug_mcp"
     }
   }
 }
