@@ -187,7 +187,7 @@ class LangSmithDebugger:
                 {
                     "name": project.name,
                     "id": str(project.id),
-                    "created_at": (project.created_at.isoformat() if project.created_at else None),
+                    "start_time": (project.start_time.isoformat() if project.start_time else None),
                     "description": project.description,
                     "reference_dataset_id": (
                         str(project.reference_dataset_id) if project.reference_dataset_id else None

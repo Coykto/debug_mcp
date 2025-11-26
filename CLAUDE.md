@@ -296,3 +296,4 @@ Never commit credentials. Always use:
 - AWS timestamps are in milliseconds, not seconds
 - Log group names must be exact matches (case-sensitive)
 - Time parsing requires careful handling of timezones (default to UTC)
+- Don't run ruff or any other linter on your own. We have pre-commit. It will handle that.
