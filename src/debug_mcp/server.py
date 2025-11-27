@@ -1,11 +1,11 @@
-"""Main MCP server setup - proxies AWS MCP servers with selective tool exposure."""
+"""Main MCP server for debugging distributed systems using boto3 and SDKs."""
 
 import os
 from datetime import UTC
 
 from fastmcp import FastMCP
 
-from .mcp_proxy import proxy
+from .tools.cloudwatch_logs import CloudWatchLogsTools
 from .tools.langsmith import get_langsmith_debugger
 from .tools.stepfunctions import StepFunctionsDebugger
 from .utils.run_memory import get_memory_store
@@ -54,24 +54,30 @@ def should_expose_tool(tool_name: str) -> bool:
     return tool_name in configured_tools
 
 
-# CloudWatch Logs Tools - proxied from awslabs.cloudwatch-mcp-server
+cw_logs = CloudWatchLogsTools(aws_profile=os.getenv("AWS_PROFILE", ""), aws_region=os.getenv("AWS_REGION", "us-east-1"))
+
+
+# CloudWatch Logs Tools - using direct boto3 implementation
 if should_expose_tool("describe_log_groups"):
 
     @mcp.tool()
-    async def describe_log_groups(log_group_name_prefix: str = "") -> dict:
+    async def describe_log_groups(log_group_name_prefix: str = "", region: str = "") -> dict:
         """
         List CloudWatch log groups.
 
         Args:
             log_group_name_prefix: Filter log groups by prefix (e.g., /aws/lambda/, /ecs/)
+            region: AWS region to query (uses configured region if empty)
         """
-        return await proxy.call_cloudwatch_tool("describe_log_groups", {"log_group_name_prefix": log_group_name_prefix})
+        return await cw_logs.describe_log_groups(log_group_name_prefix=log_group_name_prefix, region=region)
 
 
 if should_expose_tool("analyze_log_group"):
 
     @mcp.tool()
-    async def analyze_log_group(log_group_name: str, start_time: str, end_time: str, filter_pattern: str = "") -> dict:
+    async def analyze_log_group(
+        log_group_name: str, start_time: str, end_time: str, filter_pattern: str = "", region: str = ""
+    ) -> dict:
         """
         Analyze CloudWatch logs for anomalies, message patterns, and error patterns.
 
@@ -80,16 +86,15 @@ if should_expose_tool("analyze_log_group"):
             start_time: Start time (ISO format)
             end_time: End time (ISO format)
             filter_pattern: Optional filter pattern
+            region: AWS region to query (uses configured region if empty)
         """
-        args = {
-            "log_group_name": log_group_name,
-            "start_time": start_time,
-            "end_time": end_time,
-        }
-        if filter_pattern:
-            args["filter_pattern"] = filter_pattern
-
-        return await proxy.call_cloudwatch_tool("analyze_log_group", args)
+        return await cw_logs.analyze_log_group(
+            log_group_name=log_group_name,
+            start_time=start_time,
+            end_time=end_time,
+            filter_pattern=filter_pattern,
+            region=region,
+        )
 
 
 if should_expose_tool("execute_log_insights_query"):
@@ -101,6 +106,7 @@ if should_expose_tool("execute_log_insights_query"):
         start_time: str,
         end_time: str,
         limit: int = 100,
+        region: str = "",
     ) -> dict:
         """
         Execute CloudWatch Logs Insights query.
@@ -111,372 +117,44 @@ if should_expose_tool("execute_log_insights_query"):
             start_time: Start time (ISO format)
             end_time: End time (ISO format)
             limit: Maximum results
+            region: AWS region to query (uses configured region if empty)
         """
-        return await proxy.call_cloudwatch_tool(
-            "execute_log_insights_query",
-            {
-                "log_group_names": log_group_names,
-                "query_string": query_string,
-                "start_time": start_time,
-                "end_time": end_time,
-                "limit": limit,
-            },
+        return await cw_logs.execute_log_insights_query(
+            log_group_names=log_group_names,
+            query_string=query_string,
+            start_time=start_time,
+            end_time=end_time,
+            limit=limit,
+            region=region,
         )
 
 
 if should_expose_tool("get_logs_insight_query_results"):
 
     @mcp.tool()
-    async def get_logs_insight_query_results(query_id: str) -> dict:
+    async def get_logs_insight_query_results(query_id: str, region: str = "") -> dict:
         """
         Get results from a CloudWatch Logs Insights query.
 
         Args:
             query_id: Query ID from execute_log_insights_query
+            region: AWS region to query (uses configured region if empty)
         """
-        return await proxy.call_cloudwatch_tool("get_logs_insight_query_results", {"query_id": query_id})
+        return await cw_logs.get_logs_insight_query_results(query_id=query_id, region=region)
 
 
 if should_expose_tool("cancel_logs_insight_query"):
 
     @mcp.tool()
-    async def cancel_logs_insight_query(query_id: str) -> dict:
+    async def cancel_logs_insight_query(query_id: str, region: str = "") -> dict:
         """
         Cancel an in-progress CloudWatch Logs Insights query.
 
         Args:
             query_id: Query ID to cancel
+            region: AWS region to query (uses configured region if empty)
         """
-        return await proxy.call_cloudwatch_tool("cancel_logs_insight_query", {"query_id": query_id})
-
-
-# CloudWatch Metrics Tools
-if should_expose_tool("get_metric_data"):
-
-    @mcp.tool()
-    async def get_metric_data(
-        metric_namespace: str,
-        metric_name: str,
-        dimensions: dict,
-        statistic: str,
-        start_time: str,
-        end_time: str,
-        period: int = 300,
-    ) -> dict:
-        """
-        Retrieve detailed CloudWatch metric data for any CloudWatch metric.
-
-        Args:
-            metric_namespace: CloudWatch metric namespace (e.g., AWS/Lambda)
-            metric_name: Metric name (e.g., Invocations)
-            dimensions: Metric dimensions (e.g., {"FunctionName": "my-function"})
-            statistic: Statistic type (Average, Sum, Maximum, Minimum, SampleCount)
-            start_time: Start time (ISO format)
-            end_time: End time (ISO format)
-            period: Period in seconds (default: 300)
-        """
-        return await proxy.call_cloudwatch_tool(
-            "get_metric_data",
-            {
-                "metric_namespace": metric_namespace,
-                "metric_name": metric_name,
-                "dimensions": dimensions,
-                "statistic": statistic,
-                "start_time": start_time,
-                "end_time": end_time,
-                "period": period,
-            },
-        )
-
-
-if should_expose_tool("get_metric_metadata"):
-
-    @mcp.tool()
-    async def get_metric_metadata(metric_namespace: str, metric_name: str) -> dict:
-        """
-        Get comprehensive metadata about a specific CloudWatch metric.
-
-        Args:
-            metric_namespace: CloudWatch metric namespace
-            metric_name: Metric name
-        """
-        return await proxy.call_cloudwatch_tool(
-            "get_metric_metadata",
-            {"metric_namespace": metric_namespace, "metric_name": metric_name},
-        )
-
-
-if should_expose_tool("get_recommended_metric_alarms"):
-
-    @mcp.tool()
-    async def get_recommended_metric_alarms(metric_namespace: str, metric_name: str, dimensions: dict) -> dict:
-        """
-        Get recommended alarms for a CloudWatch metric based on best practices and statistical analysis.
-
-        Args:
-            metric_namespace: CloudWatch metric namespace
-            metric_name: Metric name
-            dimensions: Metric dimensions
-        """
-        return await proxy.call_cloudwatch_tool(
-            "get_recommended_metric_alarms",
-            {
-                "metric_namespace": metric_namespace,
-                "metric_name": metric_name,
-                "dimensions": dimensions,
-            },
-        )
-
-
-if should_expose_tool("analyze_metric"):
-
-    @mcp.tool()
-    async def analyze_metric(
-        metric_namespace: str, metric_name: str, dimensions: dict, start_time: str, end_time: str
-    ) -> dict:
-        """
-        Analyze CloudWatch metric data to determine trend, seasonality, and statistical properties.
-
-        Args:
-            metric_namespace: CloudWatch metric namespace
-            metric_name: Metric name
-            dimensions: Metric dimensions
-            start_time: Start time (ISO format)
-            end_time: End time (ISO format)
-        """
-        return await proxy.call_cloudwatch_tool(
-            "analyze_metric",
-            {
-                "metric_namespace": metric_namespace,
-                "metric_name": metric_name,
-                "dimensions": dimensions,
-                "start_time": start_time,
-                "end_time": end_time,
-            },
-        )
-
-
-# CloudWatch Alarms Tools
-if should_expose_tool("get_active_alarms"):
-
-    @mcp.tool()
-    async def get_active_alarms() -> dict:
-        """
-        Identify currently active CloudWatch alarms across the account.
-        """
-        return await proxy.call_cloudwatch_tool("get_active_alarms", {})
-
-
-if should_expose_tool("get_alarm_history"):
-
-    @mcp.tool()
-    async def get_alarm_history(alarm_name: str) -> dict:
-        """
-        Retrieve historical state changes and patterns for a given CloudWatch alarm.
-
-        Args:
-            alarm_name: CloudWatch alarm name
-        """
-        return await proxy.call_cloudwatch_tool("get_alarm_history", {"alarm_name": alarm_name})
-
-
-# ECS Tools - proxied from awslabs.ecs-mcp-server
-if should_expose_tool("containerize_app"):
-
-    @mcp.tool()
-    async def containerize_app(app_directory: str) -> dict:
-        """
-        Generate Dockerfile and container configurations for web applications following best practices.
-
-        Args:
-            app_directory: Path to application source code directory
-        """
-        return await proxy.call_ecs_tool("containerize_app", {"app_directory": app_directory})
-
-
-if should_expose_tool("build_and_push_image_to_ecr"):
-
-    @mcp.tool()
-    async def build_and_push_image_to_ecr(app_directory: str, image_tag: str, repository_name: str) -> dict:
-        """
-        Create ECR infrastructure, build Docker images, and push them to the repository.
-
-        Args:
-            app_directory: Path to application directory
-            image_tag: Docker image tag
-            repository_name: ECR repository name
-        """
-        return await proxy.call_ecs_tool(
-            "build_and_push_image_to_ecr",
-            {
-                "app_directory": app_directory,
-                "image_tag": image_tag,
-                "repository_name": repository_name,
-            },
-        )
-
-
-if should_expose_tool("validate_ecs_express_mode_prerequisites"):
-
-    @mcp.tool()
-    async def validate_ecs_express_mode_prerequisites(
-        task_execution_role_name: str, infrastructure_role_name: str, ecr_image_uri: str
-    ) -> dict:
-        """
-        Verify that required IAM roles and Docker images exist before ECS deployment.
-
-        Args:
-            task_execution_role_name: Name of task execution IAM role
-            infrastructure_role_name: Name of infrastructure IAM role
-            ecr_image_uri: ECR image URI
-        """
-        return await proxy.call_ecs_tool(
-            "validate_ecs_express_mode_prerequisites",
-            {
-                "task_execution_role_name": task_execution_role_name,
-                "infrastructure_role_name": infrastructure_role_name,
-                "ecr_image_uri": ecr_image_uri,
-            },
-        )
-
-
-if should_expose_tool("wait_for_service_ready"):
-
-    @mcp.tool()
-    async def wait_for_service_ready(cluster_name: str, service_name: str) -> dict:
-        """
-        Poll ECS service status until tasks reach a running state (checks every 10 seconds).
-
-        Args:
-            cluster_name: ECS cluster name
-            service_name: ECS service name
-        """
-        return await proxy.call_ecs_tool(
-            "wait_for_service_ready", {"cluster_name": cluster_name, "service_name": service_name}
-        )
-
-
-if should_expose_tool("delete_app"):
-
-    @mcp.tool()
-    async def delete_app(service_name: str, cluster_name: str) -> dict:
-        """
-        Remove Express Mode deployment and associated infrastructure including ECR stacks.
-
-        Args:
-            service_name: ECS service name
-            cluster_name: ECS cluster name
-        """
-        return await proxy.call_ecs_tool("delete_app", {"service_name": service_name, "cluster_name": cluster_name})
-
-
-if should_expose_tool("ecs_troubleshooting_tool"):
-
-    @mcp.tool()
-    async def ecs_troubleshooting_tool(
-        action: str,
-        cluster_name: str = "",
-        service_name: str = "",
-        task_id: str = "",
-        stack_name: str = "",
-    ) -> dict:
-        """
-        Consolidated diagnostics tool for ECS issue resolution.
-
-        Actions: initial_assessment, cloudformation_diagnostics, service_events,
-        task_failure_analysis, cloudwatch_logs, image_pull_failure, network_diagnostics
-
-        Args:
-            action: Troubleshooting action to perform
-            cluster_name: ECS cluster name (varies by action)
-            service_name: ECS service name (varies by action)
-            task_id: ECS task ID (varies by action)
-            stack_name: CloudFormation stack name (varies by action)
-        """
-        args = {"action": action}
-        if cluster_name:
-            args["cluster_name"] = cluster_name
-        if service_name:
-            args["service_name"] = service_name
-        if task_id:
-            args["task_id"] = task_id
-        if stack_name:
-            args["stack_name"] = stack_name
-
-        return await proxy.call_ecs_tool("ecs_troubleshooting_tool", args)
-
-
-if should_expose_tool("ecs_resource_management"):
-
-    @mcp.tool()
-    async def ecs_resource_management(
-        resource_type: str, operation: str, resource_identifier: str = "", configuration: dict = {}
-    ) -> dict:
-        """
-        Comprehensive access to ECS resources for monitoring and management.
-
-        Supports read/list/describe operations on clusters, services, tasks, task definitions,
-        container instances, capacity providers, and ECR repositories.
-
-        Args:
-            resource_type: Type of resource (cluster, service, task, etc.)
-            operation: Operation type (list, describe, create, update, delete)
-            resource_identifier: Resource identifier (varies by operation)
-            configuration: Configuration details (for create/update operations)
-        """
-        args = {"resource_type": resource_type, "operation": operation}
-        if resource_identifier:
-            args["resource_identifier"] = resource_identifier
-        if configuration:
-            args["configuration"] = configuration
-
-        return await proxy.call_ecs_tool("ecs_resource_management", args)
-
-
-if should_expose_tool("aws_knowledge_aws___search_documentation"):
-
-    @mcp.tool()
-    async def aws_knowledge_aws___search_documentation(query: str, topic_area: str = "") -> dict:
-        """
-        Search AWS documentation including latest docs, API references, blogs, and best practices.
-
-        Args:
-            query: Search query
-            topic_area: Optional topic area to filter results
-        """
-        args = {"query": query}
-        if topic_area:
-            args["topic_area"] = topic_area
-
-        return await proxy.call_ecs_tool("aws_knowledge_aws___search_documentation", args)
-
-
-if should_expose_tool("aws_knowledge_aws___read_documentation"):
-
-    @mcp.tool()
-    async def aws_knowledge_aws___read_documentation(documentation_url: str) -> dict:
-        """
-        Convert AWS documentation pages to markdown format.
-
-        Args:
-            documentation_url: AWS documentation page URL
-        """
-        return await proxy.call_ecs_tool(
-            "aws_knowledge_aws___read_documentation", {"documentation_url": documentation_url}
-        )
-
-
-if should_expose_tool("aws_knowledge_aws___recommend"):
-
-    @mcp.tool()
-    async def aws_knowledge_aws___recommend(topic: str) -> dict:
-        """
-        Get content recommendations for AWS documentation pages.
-
-        Args:
-            topic: Topic or content area
-        """
-        return await proxy.call_ecs_tool("aws_knowledge_aws___recommend", {"topic": topic})
+        return await cw_logs.cancel_logs_insight_query(query_id=query_id, region=region)
 
 
 # Step Functions Debugging Tools - using boto3 directly
