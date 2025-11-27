@@ -1,8 +1,8 @@
 # Debug MCP
 
-MCP server for debugging distributed systems (AWS: Lambda, Step Functions, ECS + LangSmith) directly from Claude Code or any MCP client.
+MCP server for debugging distributed systems (AWS CloudWatch Logs, Step Functions, LangSmith) directly from Claude Code or any MCP client.
 
-**Status**: ✅ Complete with tools from CloudWatch, ECS, Step Functions, and LangSmith
+**Status**: ✅ Complete - 16 debugging tools using boto3 and LangSmith SDK
 **Repository**: https://github.com/Coykto/debug_mcp
 
 ## Quick Start
@@ -53,23 +53,7 @@ claude mcp add --scope user --transport stdio debug-mcp \
 - "List all Lambda log groups"
 - "Search for ERROR in /aws/lambda/my-function from the last hour"
 - "Analyze /aws/lambda/my-function logs for patterns"
-
-**CloudWatch Metrics & Alarms:**
-- "Show me Lambda invocation metrics for my-function from yesterday"
-- "What alarms are currently active?"
-- "Get recommended alarms for my Lambda function"
-
-**ECS Debugging:**
-- "Troubleshoot ECS service my-service in cluster my-cluster"
-- "Show me ECS task failures for my-service"
-- "List all running ECS tasks in my-cluster"
-
-**ECS Deployment:**
-- "Containerize my app in /path/to/app"
-- "Build and push Docker image to ECR"
-
-**AWS Documentation:**
-- "Search AWS docs for Lambda best practices"
+- "Run a CloudWatch Insights query on my Lambda logs"
 
 **Step Functions Debugging:**
 - "List all my Step Functions state machines"
@@ -82,55 +66,26 @@ claude mcp add --scope user --transport stdio debug-mcp \
 - "List my LangSmith projects in prod environment"
 - "Show me errored runs from the last hour in production"
 - "Get details for LangSmith run abc-123 in dev"
-- "Search for slow runs (>5 seconds) in my project"
+- "Search for conversations containing a specific error message"
 
 ## How It Works
 
-This MCP server acts as a **proxy/gateway** to AWS MCP servers:
-1. Spawns AWS MCP servers (awslabs.cloudwatch-mcp-server, awslabs.ecs-mcp-server, etc.) as subprocesses
-2. Forwards only the tools you select, hiding the rest
-3. Keeps your tool list minimal and focused on debugging
+This MCP server implements debugging tools using **boto3 and SDKs directly**:
+- CloudWatch Logs tools use boto3 client
+- Step Functions tools use boto3 client
+- LangSmith tools use LangSmith SDK
 
-**No reimplementation** - AWS maintains the underlying functionality, we just filter which tools are exposed.
+No AWS MCP servers are used - everything is implemented directly for better reliability and region handling.
 
 ## Available Tools
 
-### CloudWatch (11 tools)
+### CloudWatch Logs (5 tools)
 
-**Logs:**
 - `describe_log_groups` - List CloudWatch log groups
 - `analyze_log_group` - Analyze logs for anomalies and patterns
 - `execute_log_insights_query` - Run CloudWatch Insights queries
 - `get_logs_insight_query_results` - Get query results
 - `cancel_logs_insight_query` - Cancel running query
-
-**Metrics:**
-- `get_metric_data` - Retrieve detailed metric data
-- `get_metric_metadata` - Get metric descriptions
-- `get_recommended_metric_alarms` - Get alarm recommendations
-- `analyze_metric` - Analyze metrics for trends
-
-**Alarms:**
-- `get_active_alarms` - List currently active alarms
-- `get_alarm_history` - Get alarm state change history
-
-### ECS (10 tools)
-
-**Deployment:**
-- `containerize_app` - Generate Dockerfile and configs
-- `build_and_push_image_to_ecr` - Build and push to ECR
-- `validate_ecs_express_mode_prerequisites` - Verify IAM roles
-- `wait_for_service_ready` - Poll service status
-- `delete_app` - Remove deployment
-
-**Troubleshooting:**
-- `ecs_troubleshooting_tool` - Diagnostics (events, task failures, logs, network)
-- `ecs_resource_management` - Manage clusters, services, tasks
-
-**Documentation:**
-- `aws_knowledge_aws___search_documentation` - Search AWS docs
-- `aws_knowledge_aws___read_documentation` - Convert docs to markdown
-- `aws_knowledge_aws___recommend` - Get doc recommendations
 
 ### Step Functions (5 tools)
 
@@ -152,13 +107,15 @@ You can also include the definition with execution details using `include_defini
 - `get_step_function_execution_details` - See the workflow definition alongside execution data
 - `search_step_function_executions` - See definitions with filtered execution results
 
-### LangSmith (4 tools)
+### LangSmith (6 tools)
 
 **Tracing & Debugging:**
 - `list_langsmith_projects` - List available LangSmith projects
 - `list_langsmith_runs` - List runs/traces with filtering (type, errors, time range)
-- `get_langsmith_run_details` - Get full run details with inputs/outputs and child runs
-- `search_langsmith_runs` - Advanced search (latency, tags, metadata, errors)
+- `get_langsmith_run_details` - Get full run details with inputs/outputs and child runs (stores in memory)
+- `search_langsmith_runs` - Search for conversations containing specific text
+- `search_run_content` - Semantic search within a stored run's content
+- `get_run_field` - Get a specific field from a stored run
 
 **Multi-Environment Support:**
 Each LangSmith tool requires an `environment` parameter:
@@ -213,34 +170,21 @@ export AWS_PROFILE=your-profile-name
 Filter which tools to expose using `DEBUG_MCP_TOOLS`:
 
 ```json
-// Default (if not set) - core debugging tools (14 tools)
-// CloudWatch Logs (5) + Step Functions (5) + LangSmith (4)
+// Default (if not set) - all 16 debugging tools
+// CloudWatch Logs (5) + Step Functions (5) + LangSmith (6)
 // Omit DEBUG_MCP_TOOLS to use this default
 
 // Minimal - only logs
 "DEBUG_MCP_TOOLS": "describe_log_groups,execute_log_insights_query,get_logs_insight_query_results"
 
-// Debugging focus - logs, metrics, alarms, ECS troubleshooting
-"DEBUG_MCP_TOOLS": "describe_log_groups,analyze_log_group,execute_log_insights_query,get_active_alarms,ecs_troubleshooting_tool,ecs_resource_management"
-
-// Expose all tools
-"DEBUG_MCP_TOOLS": "all"
+// Logs and Step Functions only
+"DEBUG_MCP_TOOLS": "describe_log_groups,analyze_log_group,execute_log_insights_query,list_state_machines,get_step_function_execution_details"
 ```
 
 **Default tools** (when `DEBUG_MCP_TOOLS` is not set):
 - CloudWatch Logs: `describe_log_groups`, `analyze_log_group`, `execute_log_insights_query`, `get_logs_insight_query_results`, `cancel_logs_insight_query`
 - Step Functions: `list_state_machines`, `get_state_machine_definition`, `list_step_function_executions`, `get_step_function_execution_details`, `search_step_function_executions`
-- LangSmith: `list_langsmith_projects`, `list_langsmith_runs`, `get_langsmith_run_details`, `search_langsmith_runs`
-
-**Available tool names:**
-
-CloudWatch: `describe_log_groups`, `analyze_log_group`, `execute_log_insights_query`, `get_logs_insight_query_results`, `cancel_logs_insight_query`, `get_metric_data`, `get_metric_metadata`, `get_recommended_metric_alarms`, `analyze_metric`, `get_active_alarms`, `get_alarm_history`
-
-ECS: `containerize_app`, `build_and_push_image_to_ecr`, `validate_ecs_express_mode_prerequisites`, `wait_for_service_ready`, `delete_app`, `ecs_troubleshooting_tool`, `ecs_resource_management`, `aws_knowledge_aws___search_documentation`, `aws_knowledge_aws___read_documentation`, `aws_knowledge_aws___recommend`
-
-Step Functions: `list_state_machines`, `get_state_machine_definition`, `list_step_function_executions`, `get_step_function_execution_details`, `search_step_function_executions`
-
-LangSmith: `list_langsmith_projects`, `list_langsmith_runs`, `get_langsmith_run_details`, `search_langsmith_runs`
+- LangSmith: `list_langsmith_projects`, `list_langsmith_runs`, `get_langsmith_run_details`, `search_langsmith_runs`, `search_run_content`, `get_run_field`
 
 ## Troubleshooting
 
@@ -270,60 +214,34 @@ Due to a [known bug in Claude Code](https://github.com/anthropics/claude-code/is
 # Install dependencies
 uv sync
 
-# Run the server
-uv run debug-mcp
+# Run the server locally
+uv run debug-mcp --aws-region us-west-2 --aws-profile your-profile
 
 # Test
 uv run pytest
 ```
 
-### Adding New AWS MCPs
+### Architecture
 
-To expose tools from other AWS MCP servers:
+The server uses direct boto3/SDK implementations:
 
-**1. Add connection to `src/debug_mcp/mcp_proxy.py`:**
+**CloudWatch Logs** (`src/debug_mcp/tools/cloudwatch_logs.py`):
+- Uses boto3 CloudWatch Logs client
+- Handles region configuration via constructor
+- Each tool method creates a client for the requested region
 
-```python
-@asynccontextmanager
-async def _connect_to_SERVICE(self):
-    server_params = StdioServerParameters(
-        command="uvx",
-        args=["awslabs.SERVICE-mcp-server@latest"],
-        env={"AWS_PROFILE": self.aws_profile, "AWS_REGION": self.aws_region}
-    )
-    async with stdio_client(server_params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            yield session
+**Step Functions** (`src/debug_mcp/tools/stepfunctions.py`):
+- Uses boto3 Step Functions client
+- Implements execution search and filtering
 
-async def call_SERVICE_tool(self, tool_name: str, arguments: dict[str, Any]) -> Any:
-    async with self._connect_to_SERVICE() as session:
-        result = await session.call_tool(tool_name, arguments)
-        return result.content
-```
+**LangSmith** (`src/debug_mcp/tools/langsmith.py`):
+- Uses LangSmith SDK directly
+- Multi-environment support via AWS Secrets Manager
 
-**2. Add proxy functions to `src/debug_mcp/server.py`:**
-
-```python
-if should_expose_tool("your_tool_name"):
-    @mcp.tool()
-    async def your_tool_name(arg1: str) -> dict:
-        """Tool description for Claude."""
-        return await proxy.call_SERVICE_tool("upstream_tool_name", {"arg1": arg1})
-```
-
-**3. Test and use:**
-
-```bash
-# Add to your DEBUG_MCP_TOOLS list
-"DEBUG_MCP_TOOLS": "your_tool_name,other_tools"
-```
-
-**Resources:**
-- [AWS MCP Servers](https://awslabs.github.io/mcp/) - Find available MCPs and tools
-- [CloudWatch MCP](https://awslabs.github.io/mcp/servers/cloudwatch-mcp-server)
-- [ECS MCP](https://awslabs.github.io/mcp/servers/ecs-mcp-server)
-- [Step Functions MCP](https://awslabs.github.io/mcp/servers/stepfunctions-tool-mcp-server)
+**Main Server** (`src/debug_mcp/server.py`):
+- FastMCP framework for MCP server hosting
+- Tool registration and exposure filtering
+- Initializes all tool classes with AWS credentials from environment variables
 
 ## Team Sharing
 
