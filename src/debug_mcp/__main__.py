@@ -2,9 +2,6 @@
 
 import argparse
 
-from .mcp_proxy import init_proxy
-from .server import mcp
-
 
 def main():
     """Run the MCP server."""
@@ -14,8 +11,13 @@ def main():
 
     args = parser.parse_args()
 
-    # Initialize proxy with credentials from CLI args only
+    # Initialize proxy with credentials from CLI args BEFORE importing server
+    from .mcp_proxy import init_proxy
+
     init_proxy(aws_profile=args.aws_profile, aws_region=args.aws_region)
+
+    # Import server AFTER proxy is initialized
+    from .server import mcp
 
     mcp.run()
 
