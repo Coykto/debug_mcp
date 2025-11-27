@@ -89,7 +89,7 @@ src/debug_mcp/
 - Easy to add/remove tools by simply adding/removing proxy functions
 - Keeps tool list minimal and focused on debugging workflows
 
-**AWS Authentication**: Environment-based using `AWS_PROFILE` and `AWS_REGION` variables passed through to upstream AWS MCP servers.
+**AWS Authentication**: CLI argument-based (`--aws-profile`, `--aws-region`) passed to `__main__.py`, which sets environment variables before spawning upstream AWS MCP servers. This approach works around a [known bug in Claude Code](https://github.com/anthropics/claude-code/issues/1254) where MCP `env` block variables aren't reliably passed to subprocess servers.
 
 **Tool Filtering**: 26 tools available from three AWS MCPs. By default, exposes 10 core debugging tools (CloudWatch Logs + Step Functions). Filter via `DEBUG_MCP_TOOLS` environment variable.
 
@@ -119,16 +119,27 @@ This pattern mimics the "serena" MCP server, making it easy for teams to install
 
 ### Configuration in Claude Code
 
-Users add the server to their MCP configuration with optional tool filtering:
+Users add the server via Claude Code CLI (recommended):
+```bash
+claude mcp add --scope user --transport stdio debug-mcp \
+    -- uvx --from git+https://github.com/Coykto/debug_mcp debug-mcp \
+    --aws-region us-west-2 \
+    --aws-profile your-profile-name
+```
+
+Or manually in `.mcp.json`:
 ```json
 {
   "mcpServers": {
     "debug-mcp": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/Coykto/debug_mcp", "debug-mcp"],
+      "args": [
+        "--from", "git+https://github.com/Coykto/debug_mcp",
+        "debug-mcp",
+        "--aws-region", "us-west-2",
+        "--aws-profile", "your-profile-name"
+      ],
       "env": {
-        "AWS_PROFILE": "your-profile-name",
-        "AWS_REGION": "us-east-1",
         "DEBUG_MCP_TOOLS": "describe_log_groups,execute_log_insights_query"
       }
     }
@@ -136,14 +147,18 @@ Users add the server to their MCP configuration with optional tool filtering:
 }
 ```
 
+**CLI Arguments** (passed to `__main__.py`):
+- `--aws-profile` - AWS profile name (overrides AWS_PROFILE env var)
+- `--aws-region` - AWS region (overrides AWS_REGION env var)
+
 **Environment Variables:**
-- `AWS_PROFILE` - AWS profile name
-- `AWS_REGION` - AWS region (default: us-east-1)
-- `DEBUG_MCP_TOOLS` - Comma-separated list of tools to expose (default: 10 core debugging tools)
-  - Default (if not set): CloudWatch Logs (5 tools) + Step Functions (5 tools)
-  - Set to "all" to expose all 26 tools
+- `DEBUG_MCP_TOOLS` - Comma-separated list of tools to expose (default: 14 core debugging tools)
+  - Default (if not set): CloudWatch Logs (5) + Step Functions (5) + LangSmith (4)
+  - Set to "all" to expose all tools
   - Set to comma-separated list to expose only specific tools
   - See available tool names in README.md
+
+**Why CLI args instead of env vars?** Claude Code has a [known bug](https://github.com/anthropics/claude-code/issues/1254) where env variables aren't reliably passed to MCP servers. CLI args work around this by setting the env vars in `__main__.py` before spawning upstream AWS MCPs.
 
 **Step Functions Configuration** (optional):
 - `STATE_MACHINE_LIST` - Comma-separated list of state machine names to expose

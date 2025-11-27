@@ -9,7 +9,16 @@ MCP server for debugging distributed systems (AWS: Lambda, Step Functions, ECS +
 
 ### Installation
 
-Add to your project's `.mcp.json`:
+**Option 1: Using Claude Code CLI (Recommended)**
+
+```bash
+claude mcp add --scope user --transport stdio debug-mcp \
+    -- uvx --from git+https://github.com/Coykto/debug_mcp debug-mcp \
+    --aws-region us-west-2 \
+    --aws-profile your-aws-profile-name
+```
+
+**Option 2: Manual configuration in `.mcp.json`**
 
 ```json
 {
@@ -20,16 +29,18 @@ Add to your project's `.mcp.json`:
       "args": [
         "--from",
         "git+https://github.com/Coykto/debug_mcp",
-        "debug-mcp"
-      ],
-      "env": {
-        "AWS_PROFILE": "your-aws-profile-name",
-        "AWS_REGION": "us-east-1"
-      }
+        "debug-mcp",
+        "--aws-region",
+        "us-west-2",
+        "--aws-profile",
+        "your-aws-profile-name"
+      ]
     }
   }
 }
 ```
+
+**Note**: AWS region and profile are passed as CLI arguments to work around a [known bug in Claude Code](https://github.com/anthropics/claude-code/issues/1254) where environment variables aren't reliably passed to MCP servers.
 
 **Prerequisites:**
 - Python 3.11+
@@ -169,11 +180,32 @@ LANGCHAIN_PROJECT=your-project-name
 ## Configuration
 
 ### AWS Authentication
+
+Pass AWS credentials as CLI arguments (recommended to work around [Claude Code env var bug](https://github.com/anthropics/claude-code/issues/1254)):
+
+```bash
+# Using Claude Code CLI
+claude mcp add --scope user --transport stdio debug-mcp \
+    -- uvx --from git+https://github.com/Coykto/debug_mcp debug-mcp \
+    --aws-region us-west-2 \
+    --aws-profile your-profile-name
+```
+
+Or in `.mcp.json`:
 ```json
-"env": {
-  "AWS_PROFILE": "your-profile-name",
-  "AWS_REGION": "us-east-1"
-}
+"args": [
+  "--from", "git+https://github.com/Coykto/debug_mcp",
+  "debug-mcp",
+  "--aws-region", "us-west-2",
+  "--aws-profile", "your-profile-name"
+]
+```
+
+**Alternative**: Set environment variables before launching Claude Code:
+```bash
+export AWS_REGION=us-west-2
+export AWS_PROFILE=your-profile-name
+# Then launch Claude Code
 ```
 
 ### Tool Selection
@@ -217,13 +249,18 @@ LangSmith: `list_langsmith_projects`, `list_langsmith_runs`, `get_langsmith_run_
 - Verify uvx is installed: `uvx --version`
 - Check Claude Code MCP logs in settings
 
-### Wrong AWS account
-- Update `AWS_PROFILE` in the env section
+### Wrong AWS region/account
+- Update `--aws-region` and `--aws-profile` CLI arguments
 - Make sure the profile exists in `~/.aws/credentials`
+- Verify the region is correct: `aws configure get region --profile YOUR_PROFILE`
+
+### Environment variables not working
+Due to a [known bug in Claude Code](https://github.com/anthropics/claude-code/issues/1254), environment variables in the MCP `env` block aren't reliably passed to servers. **Use CLI arguments instead** (see installation examples above).
 
 ### Too many tools in the list
-- Set `DEBUG_MCP_TOOLS` to only the tools you need
+- Set `DEBUG_MCP_TOOLS` environment variable to filter tools
 - See available tool names above
+- Example: `"env": {"DEBUG_MCP_TOOLS": "describe_log_groups,list_state_machines"}`
 
 ## Development
 
