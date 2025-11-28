@@ -1,8 +1,8 @@
 # Debug MCP
 
-MCP server for debugging distributed systems (AWS CloudWatch Logs, Step Functions, LangSmith) directly from Claude Code or any MCP client.
+MCP server for debugging distributed systems (AWS CloudWatch Logs, Step Functions, LangSmith, Jira) directly from Claude Code or any MCP client.
 
-**Status**: ✅ Complete - 16 debugging tools using boto3 and LangSmith SDK
+**Status**: ✅ Complete - 18 debugging tools using boto3, LangSmith SDK, and Jira SDK
 **Repository**: https://github.com/Coykto/debug_mcp
 
 ## Quick Start
@@ -67,6 +67,12 @@ claude mcp add --scope user --transport stdio debug-mcp \
 - "Show me errored runs from the last hour in production"
 - "Get details for LangSmith run abc-123 in dev"
 - "Search for conversations containing a specific error message"
+
+**Jira Tickets:**
+- "Search for bugs in To Do status"
+- "Find tickets assigned to me"
+- "Get details for ticket PROJ-123"
+- "Show me all in-progress stories about authentication"
 
 ## How It Works
 
@@ -134,6 +140,16 @@ LANGCHAIN_API_KEY=ls_your_api_key_here
 LANGCHAIN_PROJECT=your-project-name
 ```
 
+### Jira (2 tools)
+
+- `search_jira_tickets` - Search tickets with filters (type, status, assignee) and text search
+- `get_jira_ticket` - Get full ticket details including linked issues, attachments, subtasks, and Epic children
+
+**Returned fields for `get_jira_ticket`:**
+- Basic: key, summary, description, status, issue_type, priority, assignee, reporter, labels, created, updated
+- Relationships: linked_issues, parent (for subtasks), subtasks, epic_children (for Epics)
+- Attachments: list of filenames
+
 ## Configuration
 
 ### AWS Authentication
@@ -165,13 +181,37 @@ export AWS_PROFILE=your-profile-name
 # Then launch Claude Code
 ```
 
+### Jira Configuration
+
+Pass Jira credentials as CLI arguments and environment variable:
+
+| Source | Name | Required | Description |
+|--------|------|----------|-------------|
+| CLI arg | `--jira-host` | Yes | Jira Cloud hostname (e.g., `company.atlassian.net`) |
+| CLI arg | `--jira-email` | Yes | Atlassian account email |
+| CLI arg | `--jira-project` | Yes | Default Jira project key (e.g., `PROJ`) |
+| Env var | `JIRA_API_TOKEN` | Yes | [Jira API token](https://id.atlassian.com/manage-profile/security/api-tokens) |
+
+**Example with Jira:**
+```bash
+claude mcp add --scope user --transport stdio debug-mcp \
+    -- uvx --from git+https://github.com/Coykto/debug_mcp debug-mcp \
+    --aws-region us-west-2 \
+    --aws-profile your-profile-name \
+    --jira-host yourcompany.atlassian.net \
+    --jira-email your.email@company.com \
+    --jira-project PROJ
+```
+
+Ensure `JIRA_API_TOKEN` is set in your environment before launching Claude Code.
+
 ### Tool Selection
 
 Filter which tools to expose using `DEBUG_MCP_TOOLS`:
 
 ```json
-// Default (if not set) - all 16 debugging tools
-// CloudWatch Logs (5) + Step Functions (5) + LangSmith (6)
+// Default (if not set) - all 18 debugging tools
+// CloudWatch Logs (5) + Step Functions (5) + LangSmith (6) + Jira (2)
 // Omit DEBUG_MCP_TOOLS to use this default
 
 // Minimal - only logs
@@ -185,6 +225,7 @@ Filter which tools to expose using `DEBUG_MCP_TOOLS`:
 - CloudWatch Logs: `describe_log_groups`, `analyze_log_group`, `execute_log_insights_query`, `get_logs_insight_query_results`, `cancel_logs_insight_query`
 - Step Functions: `list_state_machines`, `get_state_machine_definition`, `list_step_function_executions`, `get_step_function_execution_details`, `search_step_function_executions`
 - LangSmith: `list_langsmith_projects`, `list_langsmith_runs`, `get_langsmith_run_details`, `search_langsmith_runs`, `search_run_content`, `get_run_field`
+- Jira: `search_jira_tickets`, `get_jira_ticket`
 
 ## Troubleshooting
 
@@ -237,6 +278,11 @@ The server uses direct boto3/SDK implementations:
 **LangSmith** (`src/debug_mcp/tools/langsmith.py`):
 - Uses LangSmith SDK directly
 - Multi-environment support via AWS Secrets Manager
+
+**Jira** (`src/debug_mcp/tools/jira.py`):
+- Uses Jira SDK directly
+- Supports Jira Cloud authentication via API token
+- Lazy client initialization
 
 **Main Server** (`src/debug_mcp/server.py`):
 - FastMCP framework for MCP server hosting

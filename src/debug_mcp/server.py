@@ -39,8 +39,9 @@ DEFAULT_TOOLS = (
     "search_langsmith_runs,"
     "search_run_content,"
     "get_run_field,"
-    # Jira (1 tool)
-    "get_jira_ticket"
+    # Jira (2 tools)
+    "get_jira_ticket,"
+    "search_jira_tickets"
 )
 
 configured_tools_str = os.getenv("DEBUG_MCP_TOOLS", DEFAULT_TOOLS)
@@ -57,14 +58,40 @@ def should_expose_tool(tool_name: str) -> bool:
     return tool_name in configured_tools
 
 
-cw_logs = CloudWatchLogsTools(aws_profile=os.getenv("AWS_PROFILE", ""), aws_region=os.getenv("AWS_REGION", "us-east-1"))
+def is_jira_configured() -> bool:
+    """Check if Jira credentials are configured."""
+    return bool(os.getenv("JIRA_HOST") and os.getenv("JIRA_EMAIL") and os.getenv("JIRA_API_TOKEN"))
 
-# Initialize Jira debugger
-jira_debugger = JiraDebugger()
+
+def is_aws_configured() -> bool:
+    """Check if AWS credentials are configured (region is required, profile is optional)."""
+    return bool(os.getenv("AWS_REGION"))
+
+
+def is_langsmith_configured() -> bool:
+    """Check if LangSmith credentials are available (API key in env or will be loaded from secrets)."""
+    # LangSmith can load credentials from AWS Secrets Manager or .env file,
+    # so we just check if AWS is configured (for secrets) or local key exists
+    return bool(
+        os.getenv("LANGCHAIN_API_KEY")  # Direct env var
+        or os.getenv("AWS_REGION")  # Can load from AWS Secrets Manager
+    )
+
+
+# Initialize tool classes only if credentials are configured
+cw_logs = (
+    CloudWatchLogsTools(aws_profile=os.getenv("AWS_PROFILE", ""), aws_region=os.getenv("AWS_REGION", "us-east-1"))
+    if is_aws_configured()
+    else None
+)
+
+sf_debugger = StepFunctionsDebugger() if is_aws_configured() else None
+
+jira_debugger = JiraDebugger() if is_jira_configured() else None
 
 
 # CloudWatch Logs Tools - using direct boto3 implementation
-if should_expose_tool("describe_log_groups"):
+if is_aws_configured() and should_expose_tool("describe_log_groups"):
 
     @mcp.tool()
     async def describe_log_groups(log_group_name_prefix: str = "", region: str = "") -> dict:
@@ -78,7 +105,7 @@ if should_expose_tool("describe_log_groups"):
         return await cw_logs.describe_log_groups(log_group_name_prefix=log_group_name_prefix, region=region)
 
 
-if should_expose_tool("analyze_log_group"):
+if is_aws_configured() and should_expose_tool("analyze_log_group"):
 
     @mcp.tool()
     async def analyze_log_group(
@@ -103,7 +130,7 @@ if should_expose_tool("analyze_log_group"):
         )
 
 
-if should_expose_tool("execute_log_insights_query"):
+if is_aws_configured() and should_expose_tool("execute_log_insights_query"):
 
     @mcp.tool()
     async def execute_log_insights_query(
@@ -135,7 +162,7 @@ if should_expose_tool("execute_log_insights_query"):
         )
 
 
-if should_expose_tool("get_logs_insight_query_results"):
+if is_aws_configured() and should_expose_tool("get_logs_insight_query_results"):
 
     @mcp.tool()
     async def get_logs_insight_query_results(query_id: str, region: str = "") -> dict:
@@ -149,7 +176,7 @@ if should_expose_tool("get_logs_insight_query_results"):
         return await cw_logs.get_logs_insight_query_results(query_id=query_id, region=region)
 
 
-if should_expose_tool("cancel_logs_insight_query"):
+if is_aws_configured() and should_expose_tool("cancel_logs_insight_query"):
 
     @mcp.tool()
     async def cancel_logs_insight_query(query_id: str, region: str = "") -> dict:
@@ -165,11 +192,10 @@ if should_expose_tool("cancel_logs_insight_query"):
 
 # Step Functions Debugging Tools - using boto3 directly
 # These tools provide comprehensive debugging capabilities for Step Functions executions
-# Initialize debugger (uses AWS_REGION from environment)
-sf_debugger = StepFunctionsDebugger()
+# Debugger initialized above with conditional check for AWS credentials
 
 
-if should_expose_tool("list_state_machines"):
+if is_aws_configured() and should_expose_tool("list_state_machines"):
 
     @mcp.tool()
     async def list_state_machines(max_results: int = 100) -> dict:
@@ -183,7 +209,7 @@ if should_expose_tool("list_state_machines"):
         return {"state_machines": state_machines, "count": len(state_machines)}
 
 
-if should_expose_tool("list_step_function_executions"):
+if is_aws_configured() and should_expose_tool("list_step_function_executions"):
 
     @mcp.tool()
     async def list_step_function_executions(
@@ -214,7 +240,7 @@ if should_expose_tool("list_step_function_executions"):
         }
 
 
-if should_expose_tool("get_state_machine_definition"):
+if is_aws_configured() and should_expose_tool("get_state_machine_definition"):
 
     @mcp.tool()
     async def get_state_machine_definition(state_machine_arn: str) -> dict:
@@ -230,7 +256,7 @@ if should_expose_tool("get_state_machine_definition"):
         return sf_debugger.get_state_machine_definition(state_machine_arn)
 
 
-if should_expose_tool("get_step_function_execution_details"):
+if is_aws_configured() and should_expose_tool("get_step_function_execution_details"):
 
     @mcp.tool()
     async def get_step_function_execution_details(execution_arn: str, include_definition: bool = False) -> dict:
@@ -249,7 +275,7 @@ if should_expose_tool("get_step_function_execution_details"):
         return sf_debugger.get_execution_details(execution_arn)
 
 
-if should_expose_tool("search_step_function_executions"):
+if is_aws_configured() and should_expose_tool("search_step_function_executions"):
 
     @mcp.tool()
     async def search_step_function_executions(
@@ -302,7 +328,7 @@ if should_expose_tool("search_step_function_executions"):
 
 # LangSmith Debugging Tools - using langsmith SDK
 # Supports multiple environments via AWS Secrets Manager or .env file
-if should_expose_tool("list_langsmith_projects"):
+if is_langsmith_configured() and should_expose_tool("list_langsmith_projects"):
 
     @mcp.tool()
     async def list_langsmith_projects(environment: str, limit: int = 100) -> dict:
@@ -326,7 +352,7 @@ if should_expose_tool("list_langsmith_projects"):
         }
 
 
-if should_expose_tool("list_langsmith_runs"):
+if is_langsmith_configured() and should_expose_tool("list_langsmith_runs"):
 
     @mcp.tool()
     async def list_langsmith_runs(
@@ -379,7 +405,7 @@ if should_expose_tool("list_langsmith_runs"):
         }
 
 
-if should_expose_tool("get_langsmith_run_details"):
+if is_langsmith_configured() and should_expose_tool("get_langsmith_run_details"):
 
     @mcp.tool()
     async def get_langsmith_run_details(
@@ -497,7 +523,7 @@ def _extract_run_summary(details: dict) -> dict:
     return summary
 
 
-if should_expose_tool("search_langsmith_runs"):
+if is_langsmith_configured() and should_expose_tool("search_langsmith_runs"):
 
     @mcp.tool()
     async def search_langsmith_runs(
@@ -577,7 +603,7 @@ if should_expose_tool("search_langsmith_runs"):
         }
 
 
-if should_expose_tool("search_run_content"):
+if is_langsmith_configured() and should_expose_tool("search_run_content"):
 
     @mcp.tool()
     async def search_run_content(
@@ -657,7 +683,7 @@ if should_expose_tool("search_run_content"):
         }
 
 
-if should_expose_tool("get_run_field"):
+if is_langsmith_configured() and should_expose_tool("get_run_field"):
 
     @mcp.tool()
     async def get_run_field(reference_id: str, field_path: str) -> dict:
@@ -736,7 +762,8 @@ if should_expose_tool("get_run_field"):
 
 
 # Jira Tools - using jira-python library
-if should_expose_tool("get_jira_ticket"):
+# Only expose if Jira credentials are configured
+if is_jira_configured() and should_expose_tool("get_jira_ticket"):
 
     @mcp.tool()
     async def get_jira_ticket(issue_key: str) -> dict:
@@ -750,3 +777,34 @@ if should_expose_tool("get_jira_ticket"):
         reporter, labels, created and updated dates.
         """
         return jira_debugger.get_ticket_details(issue_key)
+
+
+if is_jira_configured() and should_expose_tool("search_jira_tickets"):
+
+    @mcp.tool()
+    async def search_jira_tickets(
+        query: str = "",
+        issue_type: str = "",
+        status: str = "",
+        assignee: str = "",
+        limit: int = 10,
+    ) -> dict:
+        """
+        Search for Jira tickets with filters and text search.
+
+        Args:
+            query: Text to search for in ticket summaries
+            issue_type: Filter by issue type (e.g., Bug, Story, Task, Epic)
+            status: Filter by status (e.g., To Do, In Progress, Done)
+            assignee: Filter by assignee (username or display name)
+            limit: Maximum results to return (default: 10)
+
+        Note: At least one parameter must be provided.
+        """
+        return jira_debugger.search_tickets(
+            query=query if query else None,
+            issue_type=issue_type if issue_type else None,
+            status=status if status else None,
+            assignee=assignee if assignee else None,
+            limit=limit,
+        )

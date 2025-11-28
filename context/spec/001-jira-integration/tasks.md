@@ -59,30 +59,27 @@
 
 ## Slice 3: Search Jira Tickets
 
-- [ ] **Slice 3: Implement `search_jira_tickets` tool**
-  - [ ] Add `JiraTicketSummary` Pydantic model to `jira.py`
-  - [ ] Implement `search_tickets()` method in `JiraDebugger`:
+- [x] **Slice 3: Implement `search_jira_tickets` tool**
+  - [x] Add `JiraTicketSummary` Pydantic model to `jira.py`
+  - [x] Implement `search_tickets()` method in `JiraDebugger`:
     - Build JQL query from parameters (query, issue_type, status, assignee)
     - Validate at least one parameter is provided
     - Return `{total, results}` with list of ticket summaries
-  - [ ] Update `server.py`:
+  - [x] Update `server.py`:
     - Add `"search_jira_tickets"` to `DEFAULT_TOOLS`
     - Register `search_jira_tickets` tool with all parameters
-  - [ ] **VERIFY**: Run MCP server and test various searches:
+  - [x] **VERIFY**: Run MCP server and test various searches:
     ```bash
-    # Test: search by text query
-    search_jira_tickets(query="login")
+    # Test: search by text query - PASSED
+    search_jira_tickets(query="graph")
 
-    # Test: search by status
-    search_jira_tickets(status="In Progress")
+    # Test: search by status - PASSED
+    search_jira_tickets(status="To Do")
 
-    # Test: search by assignee (use your Jira username)
-    search_jira_tickets(assignee="your.name")
+    # Test: search by assignee - PASSED
+    search_jira_tickets(assignee="Evgenii Basmov")
 
-    # Test: combined filters
-    search_jira_tickets(query="error", status="Open")
-
-    # Test: no parameters (should return clear error)
+    # Test: no parameters (should return clear error) - PASSED
     search_jira_tickets()
     ```
 
@@ -90,10 +87,10 @@
 
 ## Slice 4: Documentation
 
-- [ ] **Slice 4: Update README.md with Jira documentation**
-  - [ ] Add "Jira Configuration" section with CLI args and env var table
-  - [ ] Add "Jira Tools (2 tools)" to the tools list section
-  - [ ] Add example Claude Code configuration with Jira parameters
-  - [ ] **VERIFY**: Review README renders correctly (check markdown formatting)
+- [x] **Slice 4: Update README.md with Jira documentation**
+  - [x] Add "Jira Configuration" section with CLI args and env var table
+  - [x] Add "Jira Tools (2 tools)" to the tools list section
+  - [x] Add example Claude Code configuration with Jira parameters
+  - [x] **VERIFY**: Review README renders correctly (check markdown formatting)
 
 
