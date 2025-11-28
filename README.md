@@ -183,16 +183,19 @@ export AWS_PROFILE=your-profile-name
 
 ### Jira Configuration
 
-Pass Jira credentials as CLI arguments and environment variable:
+Pass Jira credentials as CLI arguments:
 
 | Source | Name | Required | Description |
 |--------|------|----------|-------------|
 | CLI arg | `--jira-host` | Yes | Jira Cloud hostname (e.g., `company.atlassian.net`) |
 | CLI arg | `--jira-email` | Yes | Atlassian account email |
 | CLI arg | `--jira-project` | Yes | Default Jira project key (e.g., `PROJ`) |
-| Env var | `JIRA_API_TOKEN` | Yes | [Jira API token](https://id.atlassian.com/manage-profile/security/api-tokens) |
+| CLI arg | `--jira-token` | Yes* | [Jira API token](https://id.atlassian.com/manage-profile/security/api-tokens) |
+| Env var | `JIRA_API_TOKEN` | Yes* | Alternative to `--jira-token` CLI arg |
 
-**Example with Jira:**
+*Either `--jira-token` or `JIRA_API_TOKEN` env var is required.
+
+**Example with Jira (all CLI args):**
 ```bash
 claude mcp add --scope user --transport stdio debug-mcp \
     -- uvx --from git+https://github.com/Coykto/debug_mcp debug-mcp \
@@ -200,10 +203,11 @@ claude mcp add --scope user --transport stdio debug-mcp \
     --aws-profile your-profile-name \
     --jira-host yourcompany.atlassian.net \
     --jira-email your.email@company.com \
-    --jira-project PROJ
+    --jira-project PROJ \
+    --jira-token your-api-token
 ```
 
-Ensure `JIRA_API_TOKEN` is set in your environment before launching Claude Code.
+Or use `JIRA_API_TOKEN` environment variable if you prefer not to pass the token as CLI arg.
 
 ### Tool Selection
 

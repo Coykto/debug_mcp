@@ -1,231 +1,284 @@
 # MCP Tool Verification Tests
 
-**Purpose:** This file contains test calls to verify all MCP tools are working correctly. Agents should run these tests after implementing or modifying tools.
+**Purpose:** This file contains test calls to verify all MCP tools are working correctly via actual MCP tool calls.
 
-**Important:** 
-- All credentials are assumed to be correctly configured
-- If a tool fails or isn't exposed, it's a credentials/configuration issue
-- Keep this list updated when adding/modifying tools
+**Testing Approach:**
+- Tests run via MCP tool calls (using `mcp__debug-mcp__*` tools), NOT Python directly
+- Credentials are read from user's shell and passed to subagent
+- Never store tokens in memory files (they get committed)
+
+**For Main Agent - Before Running Tests:**
+```bash
+# Read these values from user's shell:
+echo "AWS_PROFILE=$AWS_PROFILE"
+echo "JIRA_API_TOKEN=$JIRA_API_TOKEN"
+```
+
+Then pass the values explicitly to the subagent prompt.
+
+**MCP Server Configuration:**
+The MCP server must be started with proper arguments for Jira tools to be exposed:
+- `--jira-host provectus-dev.atlassian.net`
+- `--jira-email ebasmov@provectus.com`
+- `--jira-project IGAL`
+- `--jira-token <token>` (or `JIRA_API_TOKEN` env var)
+
+**For subagents to run MCP with all credentials:**
+```bash
+uv run debug-mcp \
+    --aws-region us-west-2 \
+    --aws-profile <profile> \
+    --jira-host provectus-dev.atlassian.net \
+    --jira-email ebasmov@provectus.com \
+    --jira-project IGAL \
+    --jira-token <token>
+```
 
 ---
 
 ## CloudWatch Logs Tools (5 tools)
-Requires: `AWS_REGION`
+Test via MCP:
 
 ### describe_log_groups
-```python
-# List Lambda log groups
-describe_log_groups(log_group_name_prefix="/aws/lambda/")
-
-# List all log groups (no filter)
-describe_log_groups()
 ```
+mcp__debug-mcp__describe_log_groups(log_group_name_prefix="/aws/lambda/")
+```
+Expected: List of Lambda log groups
 
 ### analyze_log_group
-```python
-# Analyze a specific log group (adjust log group name as needed)
-analyze_log_group(log_group_name="/aws/lambda/your-function", hours=1)
 ```
-
-### execute_log_insights_query
-```python
-# Run a simple query
-execute_log_insights_query(
-    log_group_names=["/aws/lambda/your-function"],
-    query="fields @timestamp, @message | sort @timestamp desc | limit 20",
-    hours=1
+mcp__debug-mcp__analyze_log_group(
+    log_group_name="/aws/lambda/<pick-from-list>",
+    start_time="<1-hour-ago-ISO>",
+    end_time="<now-ISO>"
 )
 ```
+Expected: Log analysis with patterns and anomalies
+
+### execute_log_insights_query
+```
+mcp__debug-mcp__execute_log_insights_query(
+    log_group_names=["/aws/lambda/<pick-from-list>"],
+    query_string="fields @timestamp, @message | sort @timestamp desc | limit 20",
+    start_time="<1-hour-ago-ISO>",
+    end_time="<now-ISO>"
+)
+```
+Expected: Query ID for async results
 
 ### get_logs_insight_query_results
-```python
-# Get results for a query (need query_id from execute_log_insights_query)
-get_logs_insight_query_results(query_id="your-query-id")
 ```
+mcp__debug-mcp__get_logs_insight_query_results(query_id="<from-execute-query>")
+```
+Expected: Query results or status
 
 ### cancel_logs_insight_query
-```python
-# Cancel a running query
-cancel_logs_insight_query(query_id="your-query-id")
 ```
+mcp__debug-mcp__cancel_logs_insight_query(query_id="<from-execute-query>")
+```
+Expected: Cancellation confirmation
 
 ---
 
 ## Step Functions Tools (5 tools)
-Requires: `AWS_REGION`
+Test via MCP:
 
 ### list_state_machines
-```python
-# List all state machines
-list_state_machines(max_results=10)
 ```
+mcp__debug-mcp__list_state_machines(max_results=10)
+```
+Expected: List of state machines with ARNs
 
 ### get_state_machine_definition
-```python
-# Get definition (need ARN from list_state_machines)
-get_state_machine_definition(state_machine_arn="arn:aws:states:...")
 ```
+mcp__debug-mcp__get_state_machine_definition(state_machine_arn="<from-list>")
+```
+Expected: ASL definition with Lambda ARNs
 
 ### list_step_function_executions
-```python
-# List executions for a state machine
-list_step_function_executions(state_machine_arn="arn:aws:states:...", max_results=10)
-
-# List only failed executions
-list_step_function_executions(state_machine_arn="arn:aws:states:...", status_filter="FAILED")
 ```
-
-### get_step_function_execution_details
-```python
-# Get execution details (need execution ARN)
-get_step_function_execution_details(execution_arn="arn:aws:states:...execution...")
-
-# With workflow definition included
-get_step_function_execution_details(execution_arn="arn:aws:states:...", include_definition=True)
-```
-
-### search_step_function_executions
-```python
-# Search executions by pattern
-search_step_function_executions(
-    state_machine_arn="arn:aws:states:...",
-    search_pattern="error",
+mcp__debug-mcp__list_step_function_executions(
+    state_machine_arn="<from-list>",
     max_results=10
 )
 ```
+Expected: List of executions
+
+### get_step_function_execution_details
+```
+mcp__debug-mcp__get_step_function_execution_details(execution_arn="<from-list>")
+```
+Expected: Full execution details with state history
+
+### search_step_function_executions
+```
+mcp__debug-mcp__search_step_function_executions(
+    state_machine_arn="<from-list>",
+    max_results=10
+)
+```
+Expected: Filtered executions
 
 ---
 
 ## LangSmith Tools (6 tools)
-Requires: `LANGCHAIN_API_KEY` or `AWS_REGION` (for Secrets Manager)
+Test via MCP:
 
 ### list_langsmith_projects
-```python
-# List projects in local environment
-list_langsmith_projects(environment="local", limit=10)
-
-# List projects in prod
-list_langsmith_projects(environment="prod", limit=10)
 ```
+mcp__debug-mcp__list_langsmith_projects(environment="prod", limit=10)
+```
+Expected: List of LangSmith projects
 
 ### list_langsmith_runs
-```python
-# List recent runs
-list_langsmith_runs(environment="local", project_name="your-project", limit=10)
-
-# List only errored runs
-list_langsmith_runs(environment="local", project_name="your-project", is_error=True)
 ```
+mcp__debug-mcp__list_langsmith_runs(
+    environment="prod",
+    project_name="<from-list>",
+    limit=10
+)
+```
+Expected: List of runs/traces
 
 ### get_langsmith_run_details
-```python
-# Get run details (need run_id from list_langsmith_runs)
-get_langsmith_run_details(environment="local", run_id="your-run-id")
 ```
+mcp__debug-mcp__get_langsmith_run_details(
+    environment="prod",
+    run_id="<from-list>"
+)
+```
+Expected: Run details with reference_id for further queries
 
 ### search_langsmith_runs
-```python
-# Search for runs containing specific text
-search_langsmith_runs(environment="local", project_name="your-project", query="error message")
 ```
+mcp__debug-mcp__search_langsmith_runs(
+    environment="prod",
+    search_text="<specific-text>",
+    limit=10
+)
+```
+Expected: Matching runs
 
 ### search_run_content
-```python
-# Search within a stored run (after calling get_langsmith_run_details)
-search_run_content(reference_id="your-run-id", query="specific content")
 ```
+mcp__debug-mcp__search_run_content(
+    reference_id="<from-get-details>",
+    query="<search-query>"
+)
+```
+Expected: Matching content chunks
 
 ### get_run_field
-```python
-# Get specific field from stored run
-get_run_field(reference_id="your-run-id", field_path="outputs.result")
 ```
+mcp__debug-mcp__get_run_field(
+    reference_id="<from-get-details>",
+    field_path="outputs"
+)
+```
+Expected: Field value
 
 ---
 
 ## Jira Tools (2 tools)
-Requires: `JIRA_HOST`, `JIRA_EMAIL`, `JIRA_API_TOKEN`
+**Requires:** MCP server started with `--jira-host`, `--jira-email`, `--jira-project` and `JIRA_API_TOKEN` env var
+
+**Known test issues:**
+- `IGAL-1064` - Epic with 5 children (Graph introduction)
+- `IGAL-1067` - Task with attachments (Graph Schema: Entities & Features)
+- `IGAL-1488` - Sub-task with parent IGAL-1487 (Test MCP integration with Context 7)
+- `IGAL-1487` - Task with 2 linked issues (Implement AgentCore Gateway client)
+- `IGAL-1421` - Task with 2 linked issues, cloned (Implement automatic update of Barley's self-awareness)
+- `IGAL-1533` - Bug, In Progress (L.Tawfic - Missing recap)
+- `IGAL-1542` - Bug, To Do (Barley fails to request clarification)
+
+Test via MCP:
 
 ### search_jira_tickets
-```python
-# Search by text query
-search_jira_tickets(query="bug", limit=5)
+```
+# Search by text query - finds IGAL-1067, IGAL-1064, IGAL-1410, etc.
+mcp__debug-mcp__search_jira_tickets(query="graph", limit=5)
 
-# Search by status
-search_jira_tickets(status="To Do", limit=5)
+# Search by status - finds IGAL-1064, IGAL-1542, IGAL-1541, etc.
+mcp__debug-mcp__search_jira_tickets(status="To Do", limit=5)
 
 # Search by assignee
-search_jira_tickets(assignee="Your Name", limit=5)
+mcp__debug-mcp__search_jira_tickets(assignee="Evgenii Basmov", limit=5)
 
-# Search by issue type
-search_jira_tickets(issue_type="Bug", limit=5)
+# Search by issue type - finds IGAL-1533, IGAL-1542, IGAL-1541, etc.
+mcp__debug-mcp__search_jira_tickets(issue_type="Bug", limit=5)
 
-# Combined filters
-search_jira_tickets(query="login", status="In Progress", limit=5)
+# Search for Sub-tasks - finds IGAL-1488, IGAL-1490, etc.
+mcp__debug-mcp__search_jira_tickets(issue_type="Sub-task", limit=5)
 
 # No parameters (should return error)
-search_jira_tickets()
+mcp__debug-mcp__search_jira_tickets()
+# Expected: {"error": "At least one search parameter is required..."}
 ```
 
 ### get_jira_ticket
-```python
-# Get ticket details
-get_jira_ticket(issue_key="PROJ-123")
+```
+# Task with attachments (3 files)
+mcp__debug-mcp__get_jira_ticket(issue_key="IGAL-1067")
+# Expected: attachments list with 3 filenames
 
-# Test with Epic (should show epic_children)
-get_jira_ticket(issue_key="PROJ-100")  # Use a known Epic
+# Epic with children (5 child issues)
+mcp__debug-mcp__get_jira_ticket(issue_key="IGAL-1064")
+# Expected: epic_children list with 5 issues (IGAL-1065, IGAL-1067, IGAL-1068, IGAL-1069, IGAL-1070)
 
-# Test with subtask (should show parent)
-get_jira_ticket(issue_key="PROJ-101")  # Use a known subtask
+# Sub-task with parent
+mcp__debug-mcp__get_jira_ticket(issue_key="IGAL-1488")
+# Expected: parent = {"key": "IGAL-1487", "summary": "Implement AgentCore Gateway client..."}
 
-# Test invalid ticket (should return error)
-get_jira_ticket(issue_key="INVALID-99999")
+# Task with linked issues (2 links)
+mcp__debug-mcp__get_jira_ticket(issue_key="IGAL-1487")
+# Expected: linked_issues with "blocks" and "relates to" links
+
+# Bug
+mcp__debug-mcp__get_jira_ticket(issue_key="IGAL-1533")
+# Expected: issue_type = "Bug", status = "In Progress"
+
+# Invalid ticket (should return error)
+mcp__debug-mcp__get_jira_ticket(issue_key="IGAL-99999")
+# Expected: {"error": "Issue IGAL-99999 not found"}
 ```
 
 ---
 
-## Quick Verification Script
+## Quick Verification via MCP
 
-Run this Python script to verify basic connectivity for each service:
+Run these MCP tool calls in sequence to verify all services:
 
-```python
-import os
-import json
+1. **CloudWatch Logs:**
+   ```
+   mcp__debug-mcp__describe_log_groups(log_group_name_prefix="/aws/lambda/")
+   ```
+   Expected: List of log groups
 
-# Test AWS (CloudWatch)
-if os.getenv("AWS_REGION"):
-    from debug_mcp.tools.cloudwatch_logs import CloudWatchLogsTools
-    cw = CloudWatchLogsTools()
-    result = cw.describe_log_groups(log_group_name_prefix="/aws/lambda/")
-    print(f"CloudWatch: {len(result.get('log_groups', []))} log groups found")
+2. **Step Functions:**
+   ```
+   mcp__debug-mcp__list_state_machines(max_results=5)
+   ```
+   Expected: List of state machines
 
-# Test AWS (Step Functions)
-if os.getenv("AWS_REGION"):
-    from debug_mcp.tools.stepfunctions import StepFunctionsDebugger
-    sfn = StepFunctionsDebugger()
-    result = sfn.list_state_machines(max_results=5)
-    print(f"Step Functions: {len(result)} state machines found")
+3. **LangSmith:**
+   ```
+   mcp__debug-mcp__list_langsmith_projects(environment="prod", limit=5)
+   ```
+   Expected: List of projects
 
-# Test Jira
-if os.getenv("JIRA_HOST") and os.getenv("JIRA_EMAIL") and os.getenv("JIRA_API_TOKEN"):
-    from debug_mcp.tools.jira import JiraDebugger
-    jira = JiraDebugger()
-    result = jira.search_tickets(status="To Do", limit=5)
-    print(f"Jira: {result.get('total', 0)} tickets found")
-
-# Test LangSmith
-if os.getenv("LANGCHAIN_API_KEY"):
-    from debug_mcp.tools.langsmith import get_langsmith_debugger
-    ls = get_langsmith_debugger("local")
-    result = ls.list_projects(limit=5)
-    print(f"LangSmith: {len(result)} projects found")
-```
+4. **Jira:**
+   ```
+   mcp__debug-mcp__search_jira_tickets(status="To Do", limit=3)
+   mcp__debug-mcp__get_jira_ticket(issue_key="IGAL-1064")
+   ```
+   Expected: Search results and Epic with children
 
 ---
 
 ## When to Update This File
 
-- **Adding new tools**: Add test cases for the new tool
+- **Adding new tools**: Add MCP test cases for the new tool
 - **Modifying tool parameters**: Update test cases to reflect changes
-- **Adding new services**: Add a new section with test cases
+- **Adding new services**: Add a new section with MCP test cases
 - **Fixing bugs**: Add test case that covers the bug scenario
+- **Finding good test data**: Update known test issues (like IGAL-1064)

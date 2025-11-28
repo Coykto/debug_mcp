@@ -12,6 +12,7 @@ def main():
     parser.add_argument("--jira-host", default="", help="Jira host (e.g., yourcompany.atlassian.net)")
     parser.add_argument("--jira-email", default="", help="Jira email for authentication")
     parser.add_argument("--jira-project", default="", help="Default Jira project key (optional)")
+    parser.add_argument("--jira-token", default="", help="Jira API token (alternative to JIRA_API_TOKEN env var)")
 
     args = parser.parse_args()
 
@@ -27,6 +28,8 @@ def main():
         os.environ["JIRA_EMAIL"] = args.jira_email
     if args.jira_project:
         os.environ["JIRA_PROJECT"] = args.jira_project
+    if args.jira_token:
+        os.environ["JIRA_API_TOKEN"] = args.jira_token
 
     # Import server AFTER environment variables are set
     from .server import mcp

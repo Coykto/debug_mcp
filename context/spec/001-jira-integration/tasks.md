@@ -86,7 +86,7 @@
 ---
 
 ## Slice 4: Documentation
-
+[.claude.json](../../../../../.claude.json)
 - [x] **Slice 4: Update README.md with Jira documentation**
   - [x] Add "Jira Configuration" section with CLI args and env var table
   - [x] Add "Jira Tools (2 tools)" to the tools list section
