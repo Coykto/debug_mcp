@@ -170,7 +170,7 @@ class CloudWatchLogsTools:
                     ]
 
                     return {
-                        "queryId": query_id,
+                        "query_id": query_id,
                         "status": status,
                         "statistics": result.get("statistics", {}),
                         "results": processed_results,
@@ -178,9 +178,11 @@ class CloudWatchLogsTools:
 
             # Timeout
             return {
-                "queryId": query_id,
+                "query_id": query_id,
                 "status": "Timeout",
-                "message": f"Query did not complete within {max_wait} seconds. Use get_logs_insight_query_results to retry.",
+                "message": (
+                    f"Query did not complete within {max_wait} seconds. Use get_logs_insight_query_results to retry."
+                ),
                 "results": [],
             }
 
@@ -212,7 +214,7 @@ class CloudWatchLogsTools:
             ]
 
             return {
-                "queryId": query_id,
+                "query_id": query_id,
                 "status": result["status"],
                 "statistics": result.get("statistics", {}),
                 "results": processed_results,
@@ -220,26 +222,3 @@ class CloudWatchLogsTools:
 
         except Exception as e:
             raise RuntimeError(f"Error getting query results: {e}") from e
-
-    async def cancel_logs_insight_query(
-        self,
-        query_id: str,
-        region: str = "",
-    ) -> dict[str, Any]:
-        """Cancel an in-progress CloudWatch Logs Insights query.
-
-        Args:
-            query_id: Query ID to cancel
-            region: AWS region to query (uses configured region if empty)
-
-        Returns:
-            Dictionary with success status
-        """
-        logs_client = self._get_logs_client(region)
-
-        try:
-            response = logs_client.stop_query(queryId=query_id)
-            return {"success": response.get("success", False)}
-
-        except Exception as e:
-            raise RuntimeError(f"Error cancelling query: {e}") from e

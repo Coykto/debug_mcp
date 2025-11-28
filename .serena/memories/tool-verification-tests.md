@@ -17,30 +17,74 @@ echo "JIRA_API_TOKEN=$JIRA_API_TOKEN"
 Then pass the values explicitly to the subagent prompt.
 
 **For Subagents - Testing Approach:**
-1. Run tools directly via `uv run python -c "..."` with inline code
+1. Run tools via MCP client SDK using `uv run python -c "..."` with inline code
 2. Do NOT create test files - just run commands and observe output
-3. Make one tool call, print result, move to next
+3. Call actual MCP tools (not Python classes) to test full integration
 4. Compile report from outputs at the end
 
-**Example test pattern:**
+**MCP Client Test Pattern:**
 ```bash
 uv run python -c "
-import os
-os.environ['JIRA_HOST'] = 'provectus-dev.atlassian.net'
-os.environ['JIRA_EMAIL'] = 'ebasmov@provectus.com'
-os.environ['JIRA_PROJECT'] = 'IGAL'
-os.environ['JIRA_API_TOKEN'] = '<token>'
+import asyncio
+import json
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
-from debug_mcp.tools.jira import JiraDebugger
-jira = JiraDebugger()
-result = jira.search_tickets(query='graph', limit=5)
-print(f'Search graph: {result[\"total\"]} results')
-for t in result['results'][:3]:
-    print(f'  {t[\"key\"]}: {t[\"summary\"]}')
+async def test():
+    server_params = StdioServerParameters(
+        command='uv',
+        args=['run', '--directory', '/Users/eb/PycharmProjects/debug_mcp', 'debug-mcp',
+              '--aws-region', 'us-west-2',
+              '--aws-profile', '<AWS_PROFILE>',
+              '--jira-host', 'provectus-dev.atlassian.net',
+              '--jira-email', 'ebasmov@provectus.com',
+              '--jira-project', 'IGAL',
+              '--jira-token', '<JIRA_API_TOKEN>']
+    )
+    
+    async with stdio_client(server_params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            
+            # Call MCP tool
+            result = await session.call_tool('search_jira_tickets', {'query': 'graph', 'limit': 5})
+            data = json.loads(result.content[0].text)
+            print(f'search_jira_tickets: {data[\"total\"]} results')
+
+asyncio.run(test())
 "
 ```
 
-Repeat for each tool, then compile results into a report table.
+This tests the full MCP integration, not just Python classes.
+
+**Error Handling - IMPORTANT:**
+When a test fails, capture and report:
+1. The exact error message or exception
+2. The raw output/response from the tool call
+3. The command that was run (for reproduction)
+
+Example error reporting:
+```python
+try:
+    result = await session.call_tool('tool_name', params)
+    data = json.loads(result.content[0].text)
+    print(f'tool_name: PASS - {summary}')
+except Exception as e:
+    print(f'tool_name: FAIL - {type(e).__name__}: {e}')
+    print(f'  Raw response: {result.content if "result" in dir() else "N/A"}')
+```
+
+If a tool returns unexpected results (e.g., 0 results when expecting data):
+- Print the full response, not just "0 results"
+- Check if the tool is even listed (call `list_tools()` first)
+- Report if credentials might be missing (tool not in list = credentials issue)
+
+**NEVER skip tests.** Always attempt every test and report:
+- What you tried
+- What happened (success, error, unexpected result)
+- The raw output
+
+Even if a prerequisite seems broken, try the test anyway - we want to see actual behavior, not assumptions.
 
 **MCP Server Configuration:**
 The MCP server must be started with proper arguments for Jira tools to be exposed:
@@ -62,7 +106,7 @@ uv run debug-mcp \
 
 ---
 
-## CloudWatch Logs Tools (5 tools)
+## CloudWatch Logs Tools (4 tools)
 Test via MCP:
 
 ### describe_log_groups
@@ -90,19 +134,13 @@ mcp__debug-mcp__execute_log_insights_query(
     end_time="<now-ISO>"
 )
 ```
-Expected: Query ID for async results
+Expected: Query results with query_id and status
 
 ### get_logs_insight_query_results
 ```
 mcp__debug-mcp__get_logs_insight_query_results(query_id="<from-execute-query>")
 ```
 Expected: Query results or status
-
-### cancel_logs_insight_query
-```
-mcp__debug-mcp__cancel_logs_insight_query(query_id="<from-execute-query>")
-```
-Expected: Cancellation confirmation
 
 ---
 

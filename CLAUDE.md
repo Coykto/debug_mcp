@@ -93,8 +93,8 @@ src/debug_mcp/
 
 **Tool Filtering**: 26 tools available from three AWS MCPs. By default, exposes 10 core debugging tools (CloudWatch Logs + Step Functions). Filter via `DEBUG_MCP_TOOLS` environment variable.
 
-**CloudWatch (11 tools):**
-- Logs: `describe_log_groups`, `analyze_log_group`, `execute_log_insights_query`, `get_logs_insight_query_results`, `cancel_logs_insight_query`
+**CloudWatch (10 tools):**
+- Logs: `describe_log_groups`, `analyze_log_group`, `execute_log_insights_query`, `get_logs_insight_query_results`
 - Metrics: `get_metric_data`, `get_metric_metadata`, `get_recommended_metric_alarms`, `analyze_metric`
 - Alarms: `get_active_alarms`, `get_alarm_history`
 

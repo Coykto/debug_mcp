@@ -18,14 +18,12 @@ mcp = FastMCP("debug-mcp")
 # Get configured tools from environment variable
 # Format: comma-separated list like "describe_log_groups,analyze_log_group"
 # If not set, expose core debugging tools by default
-# Set to "all" to expose all 26 tools
 DEFAULT_TOOLS = (
-    # CloudWatch Logs (5 tools)
+    # CloudWatch Logs (4 tools)
     "describe_log_groups,"
     "analyze_log_group,"
     "execute_log_insights_query,"
     "get_logs_insight_query_results,"
-    "cancel_logs_insight_query,"
     # Step Functions (5 tools)
     "list_state_machines,"
     "get_state_machine_definition,"
@@ -174,20 +172,6 @@ if is_aws_configured() and should_expose_tool("get_logs_insight_query_results"):
             region: AWS region to query (uses configured region if empty)
         """
         return await cw_logs.get_logs_insight_query_results(query_id=query_id, region=region)
-
-
-if is_aws_configured() and should_expose_tool("cancel_logs_insight_query"):
-
-    @mcp.tool()
-    async def cancel_logs_insight_query(query_id: str, region: str = "") -> dict:
-        """
-        Cancel an in-progress CloudWatch Logs Insights query.
-
-        Args:
-            query_id: Query ID to cancel
-            region: AWS region to query (uses configured region if empty)
-        """
-        return await cw_logs.cancel_logs_insight_query(query_id=query_id, region=region)
 
 
 # Step Functions Debugging Tools - using boto3 directly

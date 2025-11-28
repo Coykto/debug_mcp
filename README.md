@@ -85,13 +85,12 @@ No AWS MCP servers are used - everything is implemented directly for better reli
 
 ## Available Tools
 
-### CloudWatch Logs (5 tools)
+### CloudWatch Logs (4 tools)
 
 - `describe_log_groups` - List CloudWatch log groups
 - `analyze_log_group` - Analyze logs for anomalies and patterns
 - `execute_log_insights_query` - Run CloudWatch Insights queries
 - `get_logs_insight_query_results` - Get query results
-- `cancel_logs_insight_query` - Cancel running query
 
 ### Step Functions (5 tools)
 
@@ -226,7 +225,7 @@ Filter which tools to expose using `DEBUG_MCP_TOOLS`:
 ```
 
 **Default tools** (when `DEBUG_MCP_TOOLS` is not set):
-- CloudWatch Logs: `describe_log_groups`, `analyze_log_group`, `execute_log_insights_query`, `get_logs_insight_query_results`, `cancel_logs_insight_query`
+- CloudWatch Logs: `describe_log_groups`, `analyze_log_group`, `execute_log_insights_query`, `get_logs_insight_query_results`
 - Step Functions: `list_state_machines`, `get_state_machine_definition`, `list_step_function_executions`, `get_step_function_execution_details`, `search_step_function_executions`
 - LangSmith: `list_langsmith_projects`, `list_langsmith_runs`, `get_langsmith_run_details`, `search_langsmith_runs`, `search_run_content`, `get_run_field`
 - Jira: `search_jira_tickets`, `get_jira_ticket`
