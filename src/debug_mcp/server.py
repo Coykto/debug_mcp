@@ -6,6 +6,7 @@ from datetime import UTC
 from fastmcp import FastMCP
 
 from .tools.cloudwatch_logs import CloudWatchLogsTools
+from .tools.jira import JiraDebugger
 from .tools.langsmith import get_langsmith_debugger
 from .tools.stepfunctions import StepFunctionsDebugger
 from .utils.run_memory import get_memory_store
@@ -37,7 +38,9 @@ DEFAULT_TOOLS = (
     "get_langsmith_run_details,"
     "search_langsmith_runs,"
     "search_run_content,"
-    "get_run_field"
+    "get_run_field,"
+    # Jira (1 tool)
+    "get_jira_ticket"
 )
 
 configured_tools_str = os.getenv("DEBUG_MCP_TOOLS", DEFAULT_TOOLS)
@@ -55,6 +58,9 @@ def should_expose_tool(tool_name: str) -> bool:
 
 
 cw_logs = CloudWatchLogsTools(aws_profile=os.getenv("AWS_PROFILE", ""), aws_region=os.getenv("AWS_REGION", "us-east-1"))
+
+# Initialize Jira debugger
+jira_debugger = JiraDebugger()
 
 
 # CloudWatch Logs Tools - using direct boto3 implementation
@@ -727,3 +733,20 @@ if should_expose_tool("get_run_field"):
             "value": value,
             "size_info": size_info,
         }
+
+
+# Jira Tools - using jira-python library
+if should_expose_tool("get_jira_ticket"):
+
+    @mcp.tool()
+    async def get_jira_ticket(issue_key: str) -> dict:
+        """
+        Get full details of a Jira ticket.
+
+        Args:
+            issue_key: The Jira issue key (e.g., IGAL-123)
+
+        Returns details including summary, description, status, assignee,
+        reporter, labels, created and updated dates.
+        """
+        return jira_debugger.get_ticket_details(issue_key)
