@@ -16,6 +16,32 @@ echo "JIRA_API_TOKEN=$JIRA_API_TOKEN"
 
 Then pass the values explicitly to the subagent prompt.
 
+**For Subagents - Testing Approach:**
+1. Run tools directly via `uv run python -c "..."` with inline code
+2. Do NOT create test files - just run commands and observe output
+3. Make one tool call, print result, move to next
+4. Compile report from outputs at the end
+
+**Example test pattern:**
+```bash
+uv run python -c "
+import os
+os.environ['JIRA_HOST'] = 'provectus-dev.atlassian.net'
+os.environ['JIRA_EMAIL'] = 'ebasmov@provectus.com'
+os.environ['JIRA_PROJECT'] = 'IGAL'
+os.environ['JIRA_API_TOKEN'] = '<token>'
+
+from debug_mcp.tools.jira import JiraDebugger
+jira = JiraDebugger()
+result = jira.search_tickets(query='graph', limit=5)
+print(f'Search graph: {result[\"total\"]} results')
+for t in result['results'][:3]:
+    print(f'  {t[\"key\"]}: {t[\"summary\"]}')
+"
+```
+
+Repeat for each tool, then compile results into a report table.
+
 **MCP Server Configuration:**
 The MCP server must be started with proper arguments for Jira tools to be exposed:
 - `--jira-host provectus-dev.atlassian.net`
