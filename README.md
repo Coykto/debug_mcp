@@ -2,7 +2,8 @@
 
 MCP server for debugging distributed systems (AWS CloudWatch Logs, Step Functions, LangSmith, Jira) directly from Claude Code or any MCP client.
 
-**Status**: ✅ Complete - 18 debugging tools using boto3, LangSmith SDK, and Jira SDK
+**Status**: ✅ Complete - Single gateway tool exposing 17 debugging tools
+**Context Reduction**: ~95% token savings (13K → ~500 tokens)
 **Repository**: https://github.com/Coykto/debug_mcp
 
 ## Quick Start
@@ -47,7 +48,28 @@ claude mcp add --scope user --transport stdio debug-mcp \
 - `uvx` installed ([installation guide](https://docs.astral.sh/uv/))
 - AWS credentials configured (`aws configure`)
 
-### What You Can Ask Claude
+## How to Use
+
+Debug MCP exposes a **single gateway tool** called `debug()` that provides discovery and execution of 17 debugging tools:
+
+### Discovery Pattern
+
+Ask Claude to discover available tools:
+
+```
+"What debugging tools are available?"
+→ Claude calls: debug(tool="list")
+
+"What CloudWatch tools are available?"
+→ Claude calls: debug(tool="list:cloudwatch")
+
+"List all Step Functions tools"
+→ Claude calls: debug(tool="list:stepfunctions")
+```
+
+### Execution Pattern
+
+Ask Claude natural language questions and it will use the appropriate tool:
 
 **CloudWatch Logs:**
 - "List all Lambda log groups"
@@ -74,16 +96,28 @@ claude mcp add --scope user --transport stdio debug-mcp \
 - "Get details for ticket PROJ-123"
 - "Show me all in-progress stories about authentication"
 
+Claude automatically translates your questions into the appropriate `debug()` call with the right tool name and arguments.
+
 ## How It Works
 
-This MCP server implements debugging tools using **boto3 and SDKs directly**:
-- CloudWatch Logs tools use boto3 client
-- Step Functions tools use boto3 client
-- LangSmith tools use LangSmith SDK
+This MCP server uses a **Tool Discovery Gateway** pattern:
 
-No AWS MCP servers are used - everything is implemented directly for better reliability and region handling.
+1. **Single Tool Interface**: Exposes one `debug()` tool to Claude instead of 17 individual tools
+2. **~95% Token Reduction**: Reduces context from ~13K tokens to ~500 tokens (tool list only)
+3. **Category-based Discovery**: Tools organized by category (cloudwatch, stepfunctions, langsmith, jira)
+4. **Direct Implementation**: Uses boto3 and SDKs directly (no AWS MCP proxies)
 
-## Available Tools
+### Gateway Architecture
+
+```
+debug(tool="list")                     → List categories
+debug(tool="list:cloudwatch")          → List CloudWatch tools
+debug(tool="describe_log_groups", ...) → Execute tool
+```
+
+All 17 debugging tools remain available - they're just accessed through the gateway instead of being exposed individually.
+
+## Available Tools (via Gateway)
 
 ### CloudWatch Logs (4 tools)
 
@@ -208,28 +242,6 @@ claude mcp add --scope user --transport stdio debug-mcp \
 
 Or use `JIRA_API_TOKEN` environment variable if you prefer not to pass the token as CLI arg.
 
-### Tool Selection
-
-Filter which tools to expose using `DEBUG_MCP_TOOLS`:
-
-```json
-// Default (if not set) - all 18 debugging tools
-// CloudWatch Logs (5) + Step Functions (5) + LangSmith (6) + Jira (2)
-// Omit DEBUG_MCP_TOOLS to use this default
-
-// Minimal - only logs
-"DEBUG_MCP_TOOLS": "describe_log_groups,execute_log_insights_query,get_logs_insight_query_results"
-
-// Logs and Step Functions only
-"DEBUG_MCP_TOOLS": "describe_log_groups,analyze_log_group,execute_log_insights_query,list_state_machines,get_step_function_execution_details"
-```
-
-**Default tools** (when `DEBUG_MCP_TOOLS` is not set):
-- CloudWatch Logs: `describe_log_groups`, `analyze_log_group`, `execute_log_insights_query`, `get_logs_insight_query_results`
-- Step Functions: `list_state_machines`, `get_state_machine_definition`, `list_step_function_executions`, `get_step_function_execution_details`, `search_step_function_executions`
-- LangSmith: `list_langsmith_projects`, `list_langsmith_runs`, `get_langsmith_run_details`, `search_langsmith_runs`, `search_run_content`, `get_run_field`
-- Jira: `search_jira_tickets`, `get_jira_ticket`
-
 ## Troubleshooting
 
 ### Server won't start
@@ -244,11 +256,6 @@ Filter which tools to expose using `DEBUG_MCP_TOOLS`:
 
 ### Environment variables not working
 Due to a [known bug in Claude Code](https://github.com/anthropics/claude-code/issues/1254), environment variables in the MCP `env` block aren't reliably passed to servers. **Use CLI arguments instead** (see installation examples above).
-
-### Too many tools in the list
-- Set `DEBUG_MCP_TOOLS` environment variable to filter tools
-- See available tool names above
-- Example: `"env": {"DEBUG_MCP_TOOLS": "describe_log_groups,list_state_machines"}`
 
 ## Development
 
@@ -267,37 +274,34 @@ uv run pytest
 
 ### Architecture
 
-The server uses direct boto3/SDK implementations:
+The server uses a **Tool Discovery Gateway** pattern with direct boto3/SDK implementations:
 
-**CloudWatch Logs** (`src/debug_mcp/tools/cloudwatch_logs.py`):
-- Uses boto3 CloudWatch Logs client
-- Handles region configuration via constructor
-- Each tool method creates a client for the requested region
+**Gateway Layer** (`src/debug_mcp/server.py`):
+- Single `debug()` tool exposed to Claude
+- Handles discovery (`tool="list"`, `tool="list:cloudwatch"`)
+- Routes execution to registered tools
+- Validates arguments with Pydantic models
 
-**Step Functions** (`src/debug_mcp/tools/stepfunctions.py`):
-- Uses boto3 Step Functions client
-- Implements execution search and filtering
+**Registry System** (`src/debug_mcp/registry.py`):
+- Central registry for all tools with schemas
+- Category-based organization
+- `@debug_tool()` decorator for registration
+- Validation and execution routing
 
-**LangSmith** (`src/debug_mcp/tools/langsmith.py`):
-- Uses LangSmith SDK directly
-- Multi-environment support via AWS Secrets Manager
+**Tool Implementations**:
+- **CloudWatch** (`cloudwatch_logs.py` + `cloudwatch_registry.py`): boto3 CloudWatch Logs client
+- **Step Functions** (`stepfunctions.py` + `stepfunctions_registry.py`): boto3 Step Functions client
+- **LangSmith** (`langsmith.py` + `langsmith_registry.py`): LangSmith SDK with multi-environment support
+- **Jira** (`jira.py` + `jira_registry.py`): Jira SDK with lazy client initialization
 
-**Jira** (`src/debug_mcp/tools/jira.py`):
-- Uses Jira SDK directly
-- Supports Jira Cloud authentication via API token
-- Lazy client initialization
-
-**Main Server** (`src/debug_mcp/server.py`):
-- FastMCP framework for MCP server hosting
-- Tool registration and exposure filtering
-- Initializes all tool classes with AWS credentials from environment variables
+Each `*_registry.py` file registers tools using the `@debug_tool()` decorator with schemas and handlers.
 
 ## Team Sharing
 
 Share with your team:
-1. They update `AWS_PROFILE` with their own profile name
-2. Optionally adjust `AWS_REGION` if different
-3. Optionally customize `DEBUG_MCP_TOOLS` to their preference
+1. They update `--aws-profile` with their own profile name
+2. Optionally adjust `--aws-region` if different
+3. All 17 debugging tools are available through the single `debug()` gateway - no tool filtering needed
 
 ## License
 

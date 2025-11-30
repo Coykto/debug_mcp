@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Debug MCP is an open-source MCP (Model Context Protocol) server for debugging distributed systems (starting with AWS: Lambda, Step Functions, ECS) directly from Claude Code or any MCP client. The project aims to eliminate context switching between console interfaces by bringing debugging capabilities into AI coding assistants.
 
-**Current Status**: Phase 1 MVP Complete - CloudWatch Logs tools are implemented and working. The server is installable locally via `uv run debug-mcp` and can be used in other projects via `uvx --from git+https://github.com/Coykto/debug_mcp`.
+**Current Status**: Tool Discovery Gateway Complete - All 17 debugging tools available through a single `debug()` gateway tool. Token usage reduced by ~95% (13K → ~500 tokens). The server is installable locally via `uv run debug-mcp` and can be used in other projects via `uvx --from git+https://github.com/Coykto/debug_mcp`.
 
 ## Development Commands
 
@@ -58,53 +58,68 @@ uv run python
 ## Architecture
 
 ### Project Structure
-The project follows src-layout with a simple proxy design:
+The project uses a **Tool Discovery Gateway** pattern with category-based tool organization:
 
 ```
 src/debug_mcp/
-├── server.py              # Main MCP server with proxied tool registrations
-├── mcp_proxy.py           # MCP proxy client for connecting to AWS MCPs
+├── server.py              # Main MCP server with single debug() gateway tool
+├── registry.py            # Central tool registry with @debug_tool decorator
 ├── __main__.py            # Entry point for CLI execution
-└── tools/                 # Tool implementations (stepfunctions.py, langsmith.py)
+└── tools/
+    ├── cloudwatch_logs.py         # CloudWatch implementation (boto3)
+    ├── cloudwatch_registry.py     # CloudWatch tool registration
+    ├── stepfunctions.py           # Step Functions implementation (boto3)
+    ├── stepfunctions_registry.py  # Step Functions tool registration
+    ├── langsmith.py               # LangSmith implementation (SDK)
+    ├── langsmith_registry.py      # LangSmith tool registration
+    ├── jira.py                    # Jira implementation (SDK)
+    └── jira_registry.py           # Jira tool registration
 ```
 
 **Key Files**:
-- `server.py` - Defines which tools to expose using FastMCP decorators. Each tool forwards to the upstream AWS MCP.
-- `mcp_proxy.py` - Manages subprocess connections to AWS MCP servers (CloudWatch, Step Functions, etc.) and forwards tool calls.
-- `__main__.py` - CLI entry point that starts the FastMCP server.
+- `server.py` - Exposes single `debug()` gateway tool using FastMCP
+- `registry.py` - Central registry system with ToolRegistry class and @debug_tool decorator
+- `*_registry.py` - Register tools for each category with schemas and handlers
+- `*.py` (non-registry) - Actual tool implementations using boto3/SDKs
+- `__main__.py` - CLI entry point that starts the FastMCP server
 
 ### Key Architectural Decisions
 
-**MCP Proxy Pattern**: This server acts as a **proxy/gateway** to AWS MCP servers, exposing only the tools you need while hiding the rest. It does NOT reimplement AWS functionality - it wraps existing AWS MCP servers.
+**Tool Discovery Gateway Pattern**: This server exposes a **single gateway tool** instead of 17 individual tools, reducing token usage by ~95% while maintaining full functionality.
 
 **How It Works**:
-1. Spawns AWS MCP servers (e.g., awslabs.cloudwatch-mcp-server) as subprocesses
-2. Uses MCP client SDK to communicate with upstream servers
-3. Exposes only selected tools through proxied calls
-4. Hides all other tools from the client
+1. Single `debug()` tool exposed to Claude with two modes: discovery and execution
+2. Discovery mode (`tool="list"` or `tool="list:category"`) returns tool schemas
+3. Execution mode (`tool="tool_name"`) routes to registered handlers
+4. Central registry validates arguments and manages execution
+
+**Token Optimization**:
+- **Before**: 17 tools × ~750 tokens/tool = ~13,000 tokens
+- **After**: 1 gateway tool × ~500 tokens = ~500 tokens
+- **Savings**: ~95% reduction in context usage
 
 **Why This Approach**:
-- No need to reimplement AWS APIs with boto3
-- AWS maintains the underlying functionality
-- Easy to add/remove tools by simply adding/removing proxy functions
-- Keeps tool list minimal and focused on debugging workflows
+- Dramatically reduced token usage for tool definitions
+- Claude can discover tools on-demand instead of loading all upfront
+- Easy to add new tools without increasing base context
+- Category-based organization makes discovery intuitive
+- Same safety and functionality as individual tools
 
-**AWS Authentication**: CLI argument-based (`--aws-profile`, `--aws-region`) passed to `__main__.py`, which sets environment variables before spawning upstream AWS MCP servers. This approach works around a [known bug in Claude Code](https://github.com/anthropics/claude-code/issues/1254) where MCP `env` block variables aren't reliably passed to subprocess servers.
+**AWS Authentication**: CLI argument-based (`--aws-profile`, `--aws-region`) passed to `__main__.py`, which sets environment variables before tool execution. This approach works around a [known bug in Claude Code](https://github.com/anthropics/claude-code/issues/1254) where MCP `env` block variables aren't reliably passed to MCP servers.
 
-**Tool Filtering**: 26 tools available from three AWS MCPs. By default, exposes 10 core debugging tools (CloudWatch Logs + Step Functions). Filter via `DEBUG_MCP_TOOLS` environment variable.
+**Available Tools (17 total across 4 categories)**:
 
-**CloudWatch (10 tools):**
-- Logs: `describe_log_groups`, `analyze_log_group`, `execute_log_insights_query`, `get_logs_insight_query_results`
-- Metrics: `get_metric_data`, `get_metric_metadata`, `get_recommended_metric_alarms`, `analyze_metric`
-- Alarms: `get_active_alarms`, `get_alarm_history`
+**CloudWatch (4 tools):**
+- `describe_log_groups`, `analyze_log_group`, `execute_log_insights_query`, `get_logs_insight_query_results`
 
-**ECS (10 tools):**
-- Deployment: `containerize_app`, `build_and_push_image_to_ecr`, `validate_ecs_express_mode_prerequisites`, `wait_for_service_ready`, `delete_app`
-- Troubleshooting: `ecs_troubleshooting_tool`, `ecs_resource_management`
-- Documentation: `aws_knowledge_aws___search_documentation`, `aws_knowledge_aws___read_documentation`, `aws_knowledge_aws___recommend`
+**Step Functions (5 tools):**
+- `list_state_machines`, `get_state_machine_definition`, `list_step_function_executions`, `get_step_function_execution_details`, `search_step_function_executions`
 
-**Step Functions (Dynamic):**
-- Tools generated from your state machines (configure via `STATE_MACHINE_LIST` or `STATE_MACHINE_PREFIX`)
+**LangSmith (6 tools):**
+- `list_langsmith_projects`, `list_langsmith_runs`, `get_langsmith_run_details`, `search_langsmith_runs`, `search_run_content`, `get_run_field`
+
+**Jira (2 tools):**
+- `search_jira_tickets`, `get_jira_ticket`
 
 **Read-Only Design**: All tools are read-only debugging operations. No CRUD or write operations to maintain safety and simplicity.
 
@@ -138,10 +153,7 @@ Or manually in `.mcp.json`:
         "debug-mcp",
         "--aws-region", "us-west-2",
         "--aws-profile", "your-profile-name"
-      ],
-      "env": {
-        "DEBUG_MCP_TOOLS": "describe_log_groups,execute_log_insights_query"
-      }
+      ]
     }
   }
 }
@@ -150,108 +162,125 @@ Or manually in `.mcp.json`:
 **CLI Arguments** (passed to `__main__.py`):
 - `--aws-profile` - AWS profile name (overrides AWS_PROFILE env var)
 - `--aws-region` - AWS region (overrides AWS_REGION env var)
+- `--jira-host`, `--jira-email`, `--jira-project`, `--jira-token` - Jira configuration (optional)
 
-**Environment Variables:**
-- `DEBUG_MCP_TOOLS` - Comma-separated list of tools to expose (default: 14 core debugging tools)
-  - Default (if not set): CloudWatch Logs (5) + Step Functions (5) + LangSmith (4)
-  - Set to "all" to expose all tools
-  - Set to comma-separated list to expose only specific tools
-  - See available tool names in README.md
-
-**Why CLI args instead of env vars?** Claude Code has a [known bug](https://github.com/anthropics/claude-code/issues/1254) where env variables aren't reliably passed to MCP servers. CLI args work around this by setting the env vars in `__main__.py` before spawning upstream AWS MCPs.
-
-**Step Functions Configuration** (optional):
-- `STATE_MACHINE_LIST` - Comma-separated list of state machine names to expose
-- `STATE_MACHINE_PREFIX` - Auto-include state machines with this prefix
-- `STATE_MACHINE_TAG_KEY` + `STATE_MACHINE_TAG_VALUE` - Filter state machines by AWS tags
+**Why CLI args instead of env vars?** Claude Code has a [known bug](https://github.com/anthropics/claude-code/issues/1254) where env variables aren't reliably passed to MCP servers. CLI args work around this by setting the env vars in `__main__.py` before tool execution.
 
 ## Implementation Phases
 
-### Phase 1: MVP (CloudWatch Logs) - ✅ COMPLETE
-The MVP proxies selected CloudWatch Logs tools from awslabs.cloudwatch-mcp-server:
-- `describe_log_groups` - List available log groups with optional prefix filtering
-- `analyze_log_group` - Analyze logs for anomalies and patterns
-- `execute_log_insights_query` - Execute CloudWatch Insights queries
-- `get_logs_insight_query_results` - Get query results
+### Phase 1: Core Tools - ✅ COMPLETE
+Implemented direct boto3/SDK tools for all major debugging workflows:
+- CloudWatch Logs (4 tools) - Log querying and analysis
+- Step Functions (5 tools) - Execution debugging and search
+- LangSmith (6 tools) - LLM tracing and debugging
+- Jira (2 tools) - Ticket search and retrieval
 
-Implementation pattern (to add more tools):
-1. Identify the tool you want from the upstream AWS MCP server
-2. Add a proxy function in `server.py` with `@mcp.tool()` decorator
-3. Call `await proxy.call_cloudwatch_tool(tool_name, arguments)`
-4. The proxy handles subprocess spawning and communication
+### Phase 2: Tool Discovery Gateway - ✅ COMPLETE
+Optimized token usage by introducing gateway pattern:
+- Single `debug()` tool instead of 17 individual tools
+- Category-based discovery system
+- ~95% reduction in token usage (13K → ~500 tokens)
+- Central registry with @debug_tool decorator
 
-### Phase 2: Expand Services
-- Step Functions execution details and history
-- ECS task logs and failures
-- Lambda invocation logs
-- Time-based correlation across services
-
-### Phase 3: Polish
-- Comprehensive test coverage
-- Enhanced error handling and validation
+### Phase 3: Future Enhancements
+Potential improvements based on user feedback:
+- Additional AWS services (ECS, Lambda direct integration)
+- Cross-service correlation tools
+- Enhanced error handling and retry logic
 - Community documentation and examples
 
 ## Adding New Tools
 
-See the "Development" section in README.md for a guide on adding new AWS MCPs and tools.
+Adding tools to the gateway is straightforward using the `@debug_tool()` decorator pattern.
 
-Quick summary for adding tools from existing AWS MCP servers:
+### Steps to Add a New Tool
 
-### For CloudWatch (already connected):
-1. Add proxy function in `server.py`:
+1. **Implement the tool logic** in the appropriate file (e.g., `tools/cloudwatch_logs.py`):
 ```python
-if should_expose_tool("new_tool_name"):
-    @mcp.tool()
-    async def new_tool_name(arg1: str) -> dict:
-        """Tool description for Claude."""
-        return await proxy.call_cloudwatch_tool("upstream_tool_name", {"arg1": arg1})
+async def my_new_tool(self, arg1: str, arg2: int) -> dict:
+    """Implementation of the tool logic using boto3/SDK."""
+    # Your implementation here
+    return {"result": "data"}
 ```
 
-### For new AWS services (Step Functions, ECS, Lambda):
-1. Add connection method in `mcp_proxy.py`:
+2. **Create a Pydantic model** for arguments in the registry file (e.g., `tools/cloudwatch_registry.py`):
 ```python
-@asynccontextmanager
-async def _connect_to_stepfunctions(self):
-    server_params = StdioServerParameters(
-        command="uvx",
-        args=["awslabs.step-functions-mcp-server@latest"],
-        env={"AWS_PROFILE": self.aws_profile, "AWS_REGION": self.aws_region}
-    )
-    async with stdio_client(server_params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            yield session
-
-async def call_stepfunctions_tool(self, tool_name: str, arguments: dict[str, Any]) -> Any:
-    async with self._connect_to_stepfunctions() as session:
-        result = await session.call_tool(tool_name, arguments)
-        return result.content
+class MyNewToolArgs(BaseModel):
+    """Arguments for my_new_tool."""
+    arg1: str = Field(description="Description of arg1")
+    arg2: int = Field(default=100, description="Description of arg2")
 ```
 
-2. Add proxy functions in `server.py`:
+3. **Register the tool** using the `@debug_tool` decorator:
 ```python
-if should_expose_tool("describe_execution"):
-    @mcp.tool()
-    async def describe_execution(execution_arn: str) -> dict:
-        """Get Step Functions execution details."""
-        return await proxy.call_stepfunctions_tool("describe_execution", {"execution_arn": execution_arn})
+@debug_tool(
+    name="my_new_tool",
+    description="What this tool does for the user",
+    category="cloudwatch",  # or "stepfunctions", "langsmith", "jira"
+    parameters=[
+        ToolParameter(
+            name="arg1",
+            type="string",
+            description="Description of arg1",
+            required=True
+        ),
+        ToolParameter(
+            name="arg2",
+            type="integer",
+            description="Description of arg2",
+            required=False,
+            default=100
+        ),
+    ],
+    arg_model=MyNewToolArgs,
+)
+async def my_new_tool(arg1: str, arg2: int = 100) -> dict:
+    """Tool handler that calls the implementation."""
+    if not is_aws_configured():
+        return {"error": True, "message": "AWS credentials not configured"}
+
+    tools = CloudWatchLogsTools()
+    return await tools.my_new_tool(arg1, arg2)
 ```
 
-**Resources**:
-- [AWS MCP Servers](https://awslabs.github.io/mcp/) - Find available MCPs and their tools
-- README.md - Step-by-step examples with Step Functions, ECS, Lambda (see Development section)
+4. **Test the tool** via the gateway:
+```python
+# Discovery
+debug(tool="list:cloudwatch")  # Should show your new tool
+
+# Execution
+debug(tool="my_new_tool", arguments='{"arg1": "value", "arg2": 200}')
+```
+
+### Example: Adding a New Category
+
+To add a completely new category (e.g., "ecs"):
+
+1. Update `registry.py` to add the category:
+```python
+self._categories["ecs"] = "ECS tools for debugging container tasks"
+```
+
+2. Create `tools/ecs.py` with implementation
+3. Create `tools/ecs_registry.py` with registrations
+4. Import in `server.py`:
+```python
+from .tools import ecs_registry  # noqa: F401
+```
+
+The gateway automatically exposes all registered tools - no changes needed to `server.py`'s `debug()` function.
 
 ## Dependencies
 
 **Core**:
 - `fastmcp>=0.2.0` - MCP server framework (provides tool decoration and server hosting)
-- `mcp>=1.0.0` - MCP SDK (provides client for connecting to upstream AWS MCPs)
-- `pydantic>=2.0.0` - Data validation
+- `pydantic>=2.0.0` - Data validation and argument models
+- `boto3>=1.28.0` - AWS SDK for CloudWatch and Step Functions tools
 
-**Upstream AWS MCPs** (spawned as subprocesses):
-- `awslabs.cloudwatch-mcp-server` - CloudWatch Logs, Metrics, Alarms
-- `awslabs.step-functions-mcp-server` - Step Functions (Phase 2)
-- `awslabs.ecs-mcp-server` - ECS tasks and services (Phase 2)
+**SDKs**:
+- `langsmith>=0.1.0` - LangSmith SDK for LLM tracing
+- `jira>=3.5.0` - Jira SDK for ticket management
+- `sentence-transformers>=2.0.0` - Semantic search for LangSmith run content
 
 **Development**:
 - `pytest>=7.0.0` - Testing framework
