@@ -12,6 +12,7 @@ MCP server for debugging distributed systems (AWS CloudWatch Logs, Step Function
 
 **Option 1: Using Claude Code CLI (Recommended)**
 
+AWS only:
 ```bash
 claude mcp add --scope user --transport stdio debug-mcp \
     -- uvx --from git+https://github.com/Coykto/debug_mcp debug-mcp \
@@ -19,8 +20,21 @@ claude mcp add --scope user --transport stdio debug-mcp \
     --aws-profile your-aws-profile-name
 ```
 
+AWS + Jira:
+```bash
+claude mcp add --scope user --transport stdio debug-mcp \
+    -- uvx --from git+https://github.com/Coykto/debug_mcp debug-mcp \
+    --aws-region us-west-2 \
+    --aws-profile your-aws-profile-name \
+    --jira-host yourcompany.atlassian.net \
+    --jira-email your.email@company.com \
+    --jira-project PROJ \
+    --jira-token your-api-token
+```
+
 **Option 2: Manual configuration in `.mcp.json`**
 
+AWS only:
 ```json
 {
   "mcpServers": {
@@ -28,25 +42,45 @@ claude mcp add --scope user --transport stdio debug-mcp \
       "type": "stdio",
       "command": "uvx",
       "args": [
-        "--from",
-        "git+https://github.com/Coykto/debug_mcp",
+        "--from", "git+https://github.com/Coykto/debug_mcp",
         "debug-mcp",
-        "--aws-region",
-        "us-west-2",
-        "--aws-profile",
-        "your-aws-profile-name"
+        "--aws-region", "us-west-2",
+        "--aws-profile", "your-aws-profile-name"
       ]
     }
   }
 }
 ```
 
-**Note**: AWS region and profile are passed as CLI arguments to work around a [known bug in Claude Code](https://github.com/anthropics/claude-code/issues/1254) where environment variables aren't reliably passed to MCP servers.
+AWS + Jira:
+```json
+{
+  "mcpServers": {
+    "debug-mcp": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from", "git+https://github.com/Coykto/debug_mcp",
+        "debug-mcp",
+        "--aws-region", "us-west-2",
+        "--aws-profile", "your-aws-profile-name",
+        "--jira-host", "yourcompany.atlassian.net",
+        "--jira-email", "your.email@company.com",
+        "--jira-project", "PROJ",
+        "--jira-token", "your-api-token"
+      ]
+    }
+  }
+}
+```
+
+**Note**: Configuration is passed as CLI arguments to work around a [known bug in Claude Code](https://github.com/anthropics/claude-code/issues/1254) where environment variables aren't reliably passed to MCP servers.
 
 **Prerequisites:**
 - Python 3.11+
 - `uvx` installed ([installation guide](https://docs.astral.sh/uv/))
 - AWS credentials configured (`aws configure`)
+- For Jira: API token from [Atlassian](https://id.atlassian.com/manage-profile/security/api-tokens) (see [Jira Configuration](#jira-configuration))
 
 ## How to Use
 
@@ -173,6 +207,8 @@ LANGCHAIN_API_KEY=ls_your_api_key_here
 LANGCHAIN_PROJECT=your-project-name
 ```
 
+> **Note**: LangSmith integration currently requires AWS Secrets Manager for `prod`/`dev` environments (this is how our team stores credentials). If you'd like to use LangSmith with direct CLI token arguments (similar to Jira), PRs are welcome!
+
 ### Jira (2 tools)
 
 - `search_jira_tickets` - Search tickets with filters (type, status, assignee) and text search
@@ -216,19 +252,27 @@ export AWS_PROFILE=your-profile-name
 
 ### Jira Configuration
 
-Pass Jira credentials as CLI arguments:
+Jira integration allows you to search tickets and get full ticket details directly from Claude Code.
 
-| Source | Name | Required | Description |
-|--------|------|----------|-------------|
-| CLI arg | `--jira-host` | Yes | Jira Cloud hostname (e.g., `company.atlassian.net`) |
-| CLI arg | `--jira-email` | Yes | Atlassian account email |
-| CLI arg | `--jira-project` | Yes | Default Jira project key (e.g., `PROJ`) |
-| CLI arg | `--jira-token` | Yes* | [Jira API token](https://id.atlassian.com/manage-profile/security/api-tokens) |
-| Env var | `JIRA_API_TOKEN` | Yes* | Alternative to `--jira-token` CLI arg |
+#### Step 1: Create a Jira API Token
 
-*Either `--jira-token` or `JIRA_API_TOKEN` env var is required.
+1. Go to [Atlassian API Token Management](https://id.atlassian.com/manage-profile/security/api-tokens)
+2. Click **Create API token**
+3. Give it a descriptive label (e.g., "Debug MCP")
+4. Copy the generated token (you won't see it again)
 
-**Example with Jira (all CLI args):**
+#### Step 2: Gather Your Jira Details
+
+You'll need:
+- **Host**: Your Jira Cloud hostname (e.g., `yourcompany.atlassian.net`)
+- **Email**: The email address associated with your Atlassian account
+- **Project**: The project key for your default project (e.g., `PROJ`, `DEV`, `CORE`)
+- **Token**: The API token from Step 1
+
+#### Step 3: Configure Debug MCP
+
+**Option A: Claude Code CLI (Recommended)**
+
 ```bash
 claude mcp add --scope user --transport stdio debug-mcp \
     -- uvx --from git+https://github.com/Coykto/debug_mcp debug-mcp \
@@ -240,7 +284,64 @@ claude mcp add --scope user --transport stdio debug-mcp \
     --jira-token your-api-token
 ```
 
-Or use `JIRA_API_TOKEN` environment variable if you prefer not to pass the token as CLI arg.
+**Option B: Manual `.mcp.json` Configuration**
+
+```json
+{
+  "mcpServers": {
+    "debug-mcp": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from", "git+https://github.com/Coykto/debug_mcp",
+        "debug-mcp",
+        "--aws-region", "us-west-2",
+        "--aws-profile", "your-profile-name",
+        "--jira-host", "yourcompany.atlassian.net",
+        "--jira-email", "your.email@company.com",
+        "--jira-project", "PROJ",
+        "--jira-token", "your-api-token"
+      ]
+    }
+  }
+}
+```
+
+**Option C: Use Environment Variable for Token**
+
+If you prefer not to store the token in your config, set `JIRA_API_TOKEN` as an environment variable before launching Claude Code:
+
+```bash
+export JIRA_API_TOKEN=your-api-token
+```
+
+Then omit `--jira-token` from the CLI args (other Jira args are still required).
+
+#### Configuration Reference
+
+| Source | Name | Required | Description |
+|--------|------|----------|-------------|
+| CLI arg | `--jira-host` | Yes | Jira Cloud hostname (e.g., `company.atlassian.net`) |
+| CLI arg | `--jira-email` | Yes | Atlassian account email |
+| CLI arg | `--jira-project` | Yes | Default Jira project key (e.g., `PROJ`) |
+| CLI arg | `--jira-token` | Yes* | Jira API token |
+| Env var | `JIRA_API_TOKEN` | Yes* | Alternative to `--jira-token` CLI arg |
+
+*Either `--jira-token` or `JIRA_API_TOKEN` is required.
+
+#### Jira Troubleshooting
+
+**"Jira credentials not configured" error:**
+- Verify all required args are provided: `--jira-host`, `--jira-email`, `--jira-project`, and token
+- Check that your API token is valid at [Atlassian API Tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
+
+**"401 Unauthorized" error:**
+- Your API token may have expired - create a new one
+- Verify the email matches your Atlassian account exactly
+
+**"Project not found" error:**
+- Check the project key (not name) - it's the prefix in ticket IDs (e.g., `PROJ` in `PROJ-123`)
+- Ensure your account has access to the project
 
 ## Troubleshooting
 
@@ -302,6 +403,20 @@ Share with your team:
 1. They update `--aws-profile` with their own profile name
 2. Optionally adjust `--aws-region` if different
 3. All 17 debugging tools are available through the single `debug()` gateway - no tool filtering needed
+
+## Contributing
+
+Contributions are welcome! Some areas where PRs would be appreciated:
+
+- **LangSmith CLI token support**: Currently LangSmith credentials are loaded from AWS Secrets Manager (for `prod`/`dev`) or `.env` files (for `local`). Adding `--langsmith-api-key` CLI argument support (similar to Jira) would make setup easier for teams not using Secrets Manager.
+- **Additional debugging tools**: New tools for other AWS services (ECS, Lambda logs, X-Ray traces)
+- **Bug fixes and improvements**: Error handling, documentation, tests
+
+To contribute:
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes (see [Adding New Tools](CLAUDE.md#adding-new-tools) in CLAUDE.md)
+4. Submit a PR
 
 ## License
 
