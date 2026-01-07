@@ -6,13 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Debug MCP is an open-source MCP (Model Context Protocol) server for debugging distributed systems (starting with AWS: Lambda, Step Functions, ECS) directly from Claude Code or any MCP client. The project aims to eliminate context switching between console interfaces by bringing debugging capabilities into AI coding assistants.
 
-**Current Status**: Tool Discovery Gateway Complete - All 17 debugging tools available through a single `debug()` gateway tool. Token usage reduced by ~95% (13K → ~500 tokens). The server is installable locally via `uv run debug-mcp` and can be used in other projects via `uvx --from git+https://github.com/Coykto/debug_mcp`.
+**Current Status**: Direct Tool Registration - Tools are exposed directly to MCP clients (no gateway). Only tools for configured services are registered, allowing selective tool exposure based on provided credentials.
 
 ## Development Commands
 
 ### Environment Setup
 ```bash
-# Install dependencies (when implemented)
+# Install dependencies
 uv sync
 
 # Install with dev dependencies
@@ -58,13 +58,12 @@ uv run python
 ## Architecture
 
 ### Project Structure
-The project uses a **Tool Discovery Gateway** pattern with category-based tool organization:
+The project uses **direct tool registration** with conditional loading based on credentials:
 
 ```
 src/debug_mcp/
-├── server.py              # Main MCP server with single debug() gateway tool
-├── registry.py            # Central tool registry with @debug_tool decorator
-├── __main__.py            # Entry point for CLI execution
+├── server.py              # Main MCP server, conditional tool registration
+├── __main__.py            # Entry point, CLI argument parsing
 └── tools/
     ├── cloudwatch_logs.py         # CloudWatch implementation (boto3)
     ├── cloudwatch_registry.py     # CloudWatch tool registration
@@ -77,48 +76,40 @@ src/debug_mcp/
 ```
 
 **Key Files**:
-- `server.py` - Exposes single `debug()` gateway tool using FastMCP
-- `registry.py` - Central registry system with ToolRegistry class and @debug_tool decorator
-- `*_registry.py` - Register tools for each category with schemas and handlers
+- `server.py` - Conditionally imports and registers tools based on configuration
+- `__main__.py` - CLI entry point that parses args and sets environment variables
+- `*_registry.py` - Each exports `register_tools(mcp: FastMCP)` function
 - `*.py` (non-registry) - Actual tool implementations using boto3/SDKs
-- `__main__.py` - CLI entry point that starts the FastMCP server
 
 ### Key Architectural Decisions
 
-**Tool Discovery Gateway Pattern**: This server exposes a **single gateway tool** instead of 17 individual tools, reducing token usage by ~95% while maintaining full functionality.
+**Direct Tool Registration**: Tools are registered directly with FastMCP using `@mcp.tool()` decorator. Only tools for configured services are exposed.
 
-**How It Works**:
-1. Single `debug()` tool exposed to Claude with two modes: discovery and execution
-2. Discovery mode (`tool="list"` or `tool="list:category"`) returns tool schemas
-3. Execution mode (`tool="tool_name"`) routes to registered handlers
-4. Central registry validates arguments and manages execution
-
-**Token Optimization**:
-- **Before**: 17 tools × ~750 tokens/tool = ~13,000 tokens
-- **After**: 1 gateway tool × ~500 tokens = ~500 tokens
-- **Savings**: ~95% reduction in context usage
+**Conditional Registration**: Tools are only registered when their service is configured:
+- **AWS tools** (CloudWatch, Step Functions): Registered when `AWS_REGION` is set
+- **Jira tools**: Registered when `JIRA_HOST`, `JIRA_EMAIL`, and `JIRA_API_TOKEN` are all set
+- **LangSmith tools**: Registered when `LANGCHAIN_API_KEY` or `LANGSMITH_API_KEY` is set
 
 **Why This Approach**:
-- Dramatically reduced token usage for tool definitions
-- Claude can discover tools on-demand instead of loading all upfront
-- Easy to add new tools without increasing base context
-- Category-based organization makes discovery intuitive
-- Same safety and functionality as individual tools
+- Users only see tools relevant to their configuration
+- No need for discovery/gateway - tools are directly available
+- Cleaner tool list in Claude Code
+- Faster startup (no unused service initialization)
 
-**AWS Authentication**: CLI argument-based (`--aws-profile`, `--aws-region`) passed to `__main__.py`, which sets environment variables before tool execution. This approach works around a [known bug in Claude Code](https://github.com/anthropics/claude-code/issues/1254) where MCP `env` block variables aren't reliably passed to MCP servers.
+**AWS Authentication**: CLI argument-based (`--aws-profile`, `--aws-region`) passed to `__main__.py`, which sets environment variables before tool registration. This approach works around a [known bug in Claude Code](https://github.com/anthropics/claude-code/issues/1254) where MCP `env` block variables aren't reliably passed to MCP servers.
 
 **Available Tools (17 total across 4 categories)**:
 
-**CloudWatch (4 tools):**
+**CloudWatch (4 tools)** - requires `--aws-region`:
 - `describe_log_groups`, `analyze_log_group`, `execute_log_insights_query`, `get_logs_insight_query_results`
 
-**Step Functions (5 tools):**
+**Step Functions (5 tools)** - requires `--aws-region`:
 - `list_state_machines`, `get_state_machine_definition`, `list_step_function_executions`, `get_step_function_execution_details`, `search_step_function_executions`
 
-**LangSmith (6 tools):**
+**LangSmith (6 tools)** - requires `--langsmith-api-key`:
 - `list_langsmith_projects`, `list_langsmith_runs`, `get_langsmith_run_details`, `search_langsmith_runs`, `search_run_content`, `get_run_field`
 
-**Jira (2 tools):**
+**Jira (2 tools)** - requires `--jira-host`, `--jira-email`, `--jira-token`:
 - `search_jira_tickets`, `get_jira_ticket`
 
 **Read-Only Design**: All tools are read-only debugging operations. No CRUD or write operations to maintain safety and simplicity.
@@ -134,12 +125,35 @@ This pattern mimics the "serena" MCP server, making it easy for teams to install
 
 ### Configuration in Claude Code
 
-Users add the server via Claude Code CLI (recommended):
+Users add the server via Claude Code CLI (recommended). Configure only the services you need:
+
+**AWS only:**
 ```bash
 claude mcp add --scope user --transport stdio debug-mcp \
     -- uvx --from git+https://github.com/Coykto/debug_mcp debug-mcp \
     --aws-region us-west-2 \
     --aws-profile your-profile-name
+```
+
+**Jira only:**
+```bash
+claude mcp add --scope user --transport stdio debug-mcp \
+    -- uvx --from git+https://github.com/Coykto/debug_mcp debug-mcp \
+    --jira-host yourcompany.atlassian.net \
+    --jira-email your@email.com \
+    --jira-token YOUR_API_TOKEN
+```
+
+**All services:**
+```bash
+claude mcp add --scope user --transport stdio debug-mcp \
+    -- uvx --from git+https://github.com/Coykto/debug_mcp debug-mcp \
+    --aws-region us-west-2 \
+    --aws-profile your-profile-name \
+    --jira-host yourcompany.atlassian.net \
+    --jira-email your@email.com \
+    --jira-token YOUR_API_TOKEN \
+    --langsmith-api-key YOUR_LANGSMITH_KEY
 ```
 
 Or manually in `.mcp.json`:
@@ -151,8 +165,9 @@ Or manually in `.mcp.json`:
       "args": [
         "--from", "git+https://github.com/Coykto/debug_mcp",
         "debug-mcp",
-        "--aws-region", "us-west-2",
-        "--aws-profile", "your-profile-name"
+        "--jira-host", "yourcompany.atlassian.net",
+        "--jira-email", "your@email.com",
+        "--jira-token", "YOUR_API_TOKEN"
       ]
     }
   }
@@ -160,38 +175,16 @@ Or manually in `.mcp.json`:
 ```
 
 **CLI Arguments** (passed to `__main__.py`):
-- `--aws-profile` - AWS profile name (overrides AWS_PROFILE env var)
-- `--aws-region` - AWS region (overrides AWS_REGION env var)
-- `--jira-host`, `--jira-email`, `--jira-project`, `--jira-token` - Jira configuration (optional)
+- `--aws-region` - AWS region (enables AWS tools)
+- `--aws-profile` - AWS profile name
+- `--jira-host`, `--jira-email`, `--jira-project`, `--jira-token` - Jira configuration
+- `--langsmith-api-key` - LangSmith API key (enables LangSmith tools)
 
-**Why CLI args instead of env vars?** Claude Code has a [known bug](https://github.com/anthropics/claude-code/issues/1254) where env variables aren't reliably passed to MCP servers. CLI args work around this by setting the env vars in `__main__.py` before tool execution.
-
-## Implementation Phases
-
-### Phase 1: Core Tools - ✅ COMPLETE
-Implemented direct boto3/SDK tools for all major debugging workflows:
-- CloudWatch Logs (4 tools) - Log querying and analysis
-- Step Functions (5 tools) - Execution debugging and search
-- LangSmith (6 tools) - LLM tracing and debugging
-- Jira (2 tools) - Ticket search and retrieval
-
-### Phase 2: Tool Discovery Gateway - ✅ COMPLETE
-Optimized token usage by introducing gateway pattern:
-- Single `debug()` tool instead of 17 individual tools
-- Category-based discovery system
-- ~95% reduction in token usage (13K → ~500 tokens)
-- Central registry with @debug_tool decorator
-
-### Phase 3: Future Enhancements
-Potential improvements based on user feedback:
-- Additional AWS services (ECS, Lambda direct integration)
-- Cross-service correlation tools
-- Enhanced error handling and retry logic
-- Community documentation and examples
+**Why CLI args instead of env vars?** Claude Code has a [known bug](https://github.com/anthropics/claude-code/issues/1254) where env variables aren't reliably passed to MCP servers. CLI args work around this by setting the env vars in `__main__.py` before tool registration.
 
 ## Adding New Tools
 
-Adding tools to the gateway is straightforward using the `@debug_tool()` decorator pattern.
+Adding tools is straightforward using the `register_tools(mcp: FastMCP)` pattern.
 
 ### Steps to Add a New Tool
 
@@ -203,72 +196,63 @@ async def my_new_tool(self, arg1: str, arg2: int) -> dict:
     return {"result": "data"}
 ```
 
-2. **Create a Pydantic model** for arguments in the registry file (e.g., `tools/cloudwatch_registry.py`):
+2. **Register the tool** in the registry file (e.g., `tools/cloudwatch_registry.py`):
 ```python
-class MyNewToolArgs(BaseModel):
-    """Arguments for my_new_tool."""
-    arg1: str = Field(description="Description of arg1")
-    arg2: int = Field(default=100, description="Description of arg2")
+def register_tools(mcp: FastMCP) -> None:
+    """Register CloudWatch tools with the MCP server."""
+    cw_logs = CloudWatchLogsTools(...)
+
+    @mcp.tool()
+    async def my_new_tool(arg1: str, arg2: int = 100) -> dict:
+        """Tool description shown to users.
+
+        Args:
+            arg1: Description of arg1
+            arg2: Description of arg2 (default: 100)
+        """
+        return await cw_logs.my_new_tool(arg1, arg2)
 ```
 
-3. **Register the tool** using the `@debug_tool` decorator:
+3. **Test the tool**:
 ```python
-@debug_tool(
-    name="my_new_tool",
-    description="What this tool does for the user",
-    category="cloudwatch",  # or "stepfunctions", "langsmith", "jira"
-    parameters=[
-        ToolParameter(
-            name="arg1",
-            type="string",
-            description="Description of arg1",
-            required=True
-        ),
-        ToolParameter(
-            name="arg2",
-            type="integer",
-            description="Description of arg2",
-            required=False,
-            default=100
-        ),
-    ],
-    arg_model=MyNewToolArgs,
-)
-async def my_new_tool(arg1: str, arg2: int = 100) -> dict:
-    """Tool handler that calls the implementation."""
-    if not is_aws_configured():
-        return {"error": True, "message": "AWS credentials not configured"}
-
-    tools = CloudWatchLogsTools()
-    return await tools.my_new_tool(arg1, arg2)
+# Verify tool is registered
+AWS_REGION=us-west-2 uv run python -c "
+from debug_mcp.server import mcp
+print(list(mcp._tool_manager._tools.keys()))
+"
 ```
 
-4. **Test the tool** via the gateway:
-```python
-# Discovery
-debug(tool="list:cloudwatch")  # Should show your new tool
-
-# Execution
-debug(tool="my_new_tool", arguments='{"arg1": "value", "arg2": 200}')
-```
-
-### Example: Adding a New Category
+### Adding a New Service Category
 
 To add a completely new category (e.g., "ecs"):
 
-1. Update `registry.py` to add the category:
+1. **Create implementation** `tools/ecs.py` with the service client
+2. **Create registry** `tools/ecs_registry.py`:
 ```python
-self._categories["ecs"] = "ECS tools for debugging container tasks"
+from fastmcp import FastMCP
+from .ecs import ECSDebugger
+
+def register_tools(mcp: FastMCP) -> None:
+    """Register ECS tools with the MCP server."""
+    debugger = ECSDebugger()
+
+    @mcp.tool()
+    async def list_ecs_services(...) -> dict:
+        ...
 ```
 
-2. Create `tools/ecs.py` with implementation
-3. Create `tools/ecs_registry.py` with registrations
-4. Import in `server.py`:
+3. **Add config check** in `server.py`:
 ```python
-from .tools import ecs_registry  # noqa: F401
+def is_ecs_configured() -> bool:
+    """Check if ECS-specific config is available."""
+    return bool(os.getenv("AWS_REGION"))  # or specific ECS config
+
+if is_ecs_configured():
+    from .tools import ecs_registry
+    _register_with_error_handling("ECS", ecs_registry.register_tools)
 ```
 
-The gateway automatically exposes all registered tools - no changes needed to `server.py`'s `debug()` function.
+4. **Add CLI args** in `__main__.py` if needed
 
 ## Dependencies
 

@@ -1,59 +1,51 @@
 """Main MCP server for debugging distributed systems using boto3 and SDKs."""
 
+import os
+
 from fastmcp import FastMCP
-
-from .registry import registry
-
-# Import registry modules to trigger tool registration
-from .tools import (
-    cloudwatch_registry,  # noqa: F401
-    jira_registry,  # noqa: F401
-    langsmith_registry,  # noqa: F401
-    stepfunctions_registry,  # noqa: F401
-)
 
 # Initialize MCP server
 mcp = FastMCP("debug-mcp")
 
 
-@mcp.tool()
-async def debug(tool: str = "list", arguments: str = "{}") -> dict:
-    """Execute debugging tools or discover available ones.
+def is_aws_configured() -> bool:
+    """Check if AWS credentials are configured (region is required)."""
+    return bool(os.getenv("AWS_REGION"))
 
-    Categories: cloudwatch, stepfunctions, langsmith, jira
 
-    Args:
-        tool: Tool name to execute, or "list" / "list:<category>" for discovery
-        arguments: JSON string of tool arguments
-    """
-    import json
+def is_jira_configured() -> bool:
+    """Check if Jira credentials are configured."""
+    return bool(os.getenv("JIRA_HOST") and os.getenv("JIRA_EMAIL") and os.getenv("JIRA_API_TOKEN"))
 
-    # Validate and parse arguments
+
+def is_langsmith_configured() -> bool:
+    """Check if LangSmith credentials are configured."""
+    return bool(os.getenv("LANGCHAIN_API_KEY") or os.getenv("LANGSMITH_API_KEY"))
+
+
+def _register_with_error_handling(name: str, register_fn: callable) -> None:
+    """Register tools with error handling for initialization failures."""
     try:
-        args = json.loads(arguments)
-    except json.JSONDecodeError as e:
-        return {"error": True, "message": f"Invalid JSON: {e}"}
-
-    # Discovery mode
-    if tool == "list":
-        return {"categories": registry.list_categories()}
-
-    if tool.startswith("list:"):
-        category = tool.split(":", 1)[1]
-        tools = registry.list_tools(category)
-        if not tools:
-            return {
-                "error": True,
-                "message": f"Unknown category: {category}",
-                "available_categories": list(registry._categories.keys()),
-            }
-        return {"tools": tools}
-
-    # Execution mode
-    try:
-        result = await registry.execute(tool, args)
-        return result
-    except ValueError as e:
-        return {"error": True, "message": str(e)}
+        register_fn(mcp)
     except Exception as e:
-        return {"error": True, "message": f"Execution failed: {e}"}
+        import sys
+
+        print(f"Warning: Failed to initialize {name} tools: {e}", file=sys.stderr)
+
+
+# Conditionally register tools based on configuration
+if is_aws_configured():
+    from .tools import cloudwatch_registry, stepfunctions_registry
+
+    _register_with_error_handling("CloudWatch", cloudwatch_registry.register_tools)
+    _register_with_error_handling("Step Functions", stepfunctions_registry.register_tools)
+
+if is_jira_configured():
+    from .tools import jira_registry
+
+    _register_with_error_handling("Jira", jira_registry.register_tools)
+
+if is_langsmith_configured():
+    from .tools import langsmith_registry
+
+    _register_with_error_handling("LangSmith", langsmith_registry.register_tools)

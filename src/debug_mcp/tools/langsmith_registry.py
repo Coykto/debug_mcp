@@ -1,90 +1,12 @@
-"""Registry for LangSmith tools using the @debug_tool decorator."""
+"""Registry for LangSmith tools - registers directly with FastMCP."""
 
-import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from pydantic import BaseModel, Field
+from fastmcp import FastMCP
 
-from ..registry import ToolParameter, debug_tool
 from ..utils.run_memory import get_memory_store
 from .langsmith import get_langsmith_debugger
-
-
-class ListLangsmithProjectsArgs(BaseModel):
-    """Arguments for list_langsmith_projects tool."""
-
-    environment: str = Field(description="Environment to query ('prod', 'dev', 'local')")
-    limit: int = Field(default=100, description="Maximum number of projects to return (default: 100)")
-
-
-class ListLangsmithRunsArgs(BaseModel):
-    """Arguments for list_langsmith_runs tool."""
-
-    environment: str = Field(description="Environment to query ('prod', 'dev', 'local')")
-    project_name: str = Field(default="", description="Project name (uses default from credentials if empty)")
-    run_type: str = Field(
-        default="", description="Filter by type: chain, llm, tool, retriever, embedding, prompt, parser"
-    )
-    is_root: bool = Field(default=True, description="If True, return only root runs/top-level traces (default: True)")
-    error_only: bool = Field(default=False, description="If True, return only errored runs (default: False)")
-    hours_back: int = Field(default=24, description="Number of hours to look back (default: 24)")
-    limit: int = Field(default=100, description="Maximum number of runs to return (default: 100)")
-
-
-class GetLangsmithRunDetailsArgs(BaseModel):
-    """Arguments for get_langsmith_run_details tool."""
-
-    environment: str = Field(description="Environment to query ('prod', 'dev', 'local')")
-    run_id: str = Field(description="The run ID (UUID) to retrieve")
-    include_children: bool = Field(default=True, description="If True, also fetch child runs (default: True)")
-    full_content: bool = Field(
-        default=False,
-        description=(
-            "If True, return full content instead of summary (default: False). "
-            "WARNING: Full content can be ~25k+ tokens."
-        ),
-    )
-
-
-class SearchLangsmithRunsArgs(BaseModel):
-    """Arguments for search_langsmith_runs tool."""
-
-    environment: str = Field(description="Environment to query ('prod', 'dev', 'local')")
-    search_text: str = Field(description="The text to search for (case-insensitive)")
-    project_name: str = Field(default="", description="Project name (uses default from credentials if empty)")
-    hours_back: int = Field(default=24, description="Number of hours to look back (default: 24)")
-    limit: int = Field(default=50, description="Maximum runs to search through (default: 50)")
-    include_children: bool = Field(default=True, description="Search in child runs too (default: True)")
-
-
-class SearchRunContentArgs(BaseModel):
-    """Arguments for search_run_content tool."""
-
-    reference_id: str = Field(description="The reference_id returned by get_langsmith_run_details()")
-    query: str = Field(description="What to search for")
-    search_type: str = Field(
-        default="auto",
-        description="Search method: 'auto' (semantic, default), 'keyword' (exact), 'similar' (explicit semantic)",
-    )
-    max_results: int = Field(default=5, description="Maximum number of matching chunks to return (default: 5)")
-
-
-class GetRunFieldArgs(BaseModel):
-    """Arguments for get_run_field tool."""
-
-    reference_id: str = Field(description="The reference_id from get_langsmith_run_details()")
-    field_path: str = Field(description="Dot-notation path to the field (e.g., 'outputs.chat_history.2.content')")
-
-
-def is_langsmith_configured() -> bool:
-    """Check if LangSmith credentials are available (API key in env or will be loaded from secrets)."""
-    # LangSmith can load credentials from AWS Secrets Manager or .env file,
-    # so we just check if AWS is configured (for secrets) or local key exists
-    return bool(
-        os.getenv("LANGCHAIN_API_KEY")  # Direct env var
-        or os.getenv("AWS_REGION")  # Can load from AWS Secrets Manager
-    )
 
 
 def _extract_run_summary(details: dict) -> dict[str, Any]:
@@ -146,32 +68,17 @@ def _extract_run_summary(details: dict) -> dict[str, Any]:
     return summary
 
 
-# Register list_langsmith_projects tool
-if is_langsmith_configured():
+def register_tools(mcp: FastMCP) -> None:
+    """Register LangSmith tools with the MCP server."""
 
-    @debug_tool(
-        name="list_langsmith_projects",
-        description="List available LangSmith projects",
-        category="langsmith",
-        parameters=[
-            ToolParameter(
-                name="environment",
-                type="string",
-                description="Environment to query ('prod', 'dev', 'local')",
-                required=True,
-            ),
-            ToolParameter(
-                name="limit",
-                type="number",
-                description="Maximum number of projects to return (default: 100)",
-                required=False,
-                default=100,
-            ),
-        ],
-        arg_model=ListLangsmithProjectsArgs,
-    )
-    async def list_langsmith_projects_registry(environment: str, limit: int = 100) -> dict:
-        """List available LangSmith projects."""
+    @mcp.tool()
+    async def list_langsmith_projects(environment: str, limit: int = 100) -> dict:
+        """List available LangSmith projects.
+
+        Args:
+            environment: Environment to query ('prod', 'dev', 'local')
+            limit: Maximum number of projects to return (default: 100)
+        """
         debugger = get_langsmith_debugger(environment)
         projects = debugger.list_projects(limit=limit)
         return {
@@ -181,67 +88,8 @@ if is_langsmith_configured():
             "default_project": debugger.default_project,
         }
 
-
-# Register list_langsmith_runs tool
-if is_langsmith_configured():
-
-    @debug_tool(
-        name="list_langsmith_runs",
-        description="List runs/traces from a LangSmith project",
-        category="langsmith",
-        parameters=[
-            ToolParameter(
-                name="environment",
-                type="string",
-                description="Environment to query ('prod', 'dev', 'local')",
-                required=True,
-            ),
-            ToolParameter(
-                name="project_name",
-                type="string",
-                description="Project name (uses default from credentials if empty)",
-                required=False,
-                default="",
-            ),
-            ToolParameter(
-                name="run_type",
-                type="string",
-                description="Filter by type: chain, llm, tool, retriever, embedding, prompt, parser",
-                required=False,
-                default="",
-            ),
-            ToolParameter(
-                name="is_root",
-                type="boolean",
-                description="If True, return only root runs/top-level traces (default: True)",
-                required=False,
-                default=True,
-            ),
-            ToolParameter(
-                name="error_only",
-                type="boolean",
-                description="If True, return only errored runs (default: False)",
-                required=False,
-                default=False,
-            ),
-            ToolParameter(
-                name="hours_back",
-                type="number",
-                description="Number of hours to look back (default: 24)",
-                required=False,
-                default=24,
-            ),
-            ToolParameter(
-                name="limit",
-                type="number",
-                description="Maximum number of runs to return (default: 100)",
-                required=False,
-                default=100,
-            ),
-        ],
-        arg_model=ListLangsmithRunsArgs,
-    )
-    async def list_langsmith_runs_registry(
+    @mcp.tool()
+    async def list_langsmith_runs(
         environment: str,
         project_name: str = "",
         run_type: str = "",
@@ -250,7 +98,17 @@ if is_langsmith_configured():
         hours_back: int = 24,
         limit: int = 100,
     ) -> dict:
-        """List runs/traces from a LangSmith project."""
+        """List runs/traces from a LangSmith project.
+
+        Args:
+            environment: Environment to query ('prod', 'dev', 'local')
+            project_name: Project name (uses default from credentials if empty)
+            run_type: Filter by type: chain, llm, tool, retriever, embedding, prompt, parser
+            is_root: If True, return only root runs/top-level traces (default: True)
+            error_only: If True, return only errored runs (default: False)
+            hours_back: Number of hours to look back (default: 24)
+            limit: Maximum number of runs to return (default: 100)
+        """
         debugger = get_langsmith_debugger(environment)
 
         start_time = datetime.now(UTC) - timedelta(hours=hours_back)
@@ -277,51 +135,19 @@ if is_langsmith_configured():
             },
         }
 
-
-# Register get_langsmith_run_details tool
-if is_langsmith_configured():
-
-    @debug_tool(
-        name="get_langsmith_run_details",
-        description="Get detailed information about a specific LangSmith run/trace",
-        category="langsmith",
-        parameters=[
-            ToolParameter(
-                name="environment",
-                type="string",
-                description="Environment to query ('prod', 'dev', 'local')",
-                required=True,
-            ),
-            ToolParameter(
-                name="run_id",
-                type="string",
-                description="The run ID (UUID) to retrieve",
-                required=True,
-            ),
-            ToolParameter(
-                name="include_children",
-                type="boolean",
-                description="If True, also fetch child runs (default: True)",
-                required=False,
-                default=True,
-            ),
-            ToolParameter(
-                name="full_content",
-                type="boolean",
-                description=(
-                    "If True, return full content instead of summary (default: False). "
-                    "WARNING: Full content can be ~25k+ tokens."
-                ),
-                required=False,
-                default=False,
-            ),
-        ],
-        arg_model=GetLangsmithRunDetailsArgs,
-    )
-    async def get_langsmith_run_details_registry(
+    @mcp.tool()
+    async def get_langsmith_run_details(
         environment: str, run_id: str, include_children: bool = True, full_content: bool = False
     ) -> dict:
-        """Get detailed information about a specific LangSmith run/trace."""
+        """Get detailed information about a specific LangSmith run/trace.
+
+        Args:
+            environment: Environment to query ('prod', 'dev', 'local')
+            run_id: The run ID (UUID) to retrieve
+            include_children: If True, also fetch child runs (default: True)
+            full_content: If True, return full content instead of summary (default: False).
+                WARNING: Full content can be ~25k+ tokens.
+        """
         debugger = get_langsmith_debugger(environment)
         details = debugger.get_run_details(run_id, include_children=include_children)
 
@@ -352,59 +178,8 @@ if is_langsmith_configured():
 
         return result
 
-
-# Register search_langsmith_runs tool
-if is_langsmith_configured():
-
-    @debug_tool(
-        name="search_langsmith_runs",
-        description="Search for LangSmith conversations containing specific text content",
-        category="langsmith",
-        parameters=[
-            ToolParameter(
-                name="environment",
-                type="string",
-                description="Environment to query ('prod', 'dev', 'local')",
-                required=True,
-            ),
-            ToolParameter(
-                name="search_text",
-                type="string",
-                description="The text to search for (case-insensitive). Use unique identifiers for best results.",
-                required=True,
-            ),
-            ToolParameter(
-                name="project_name",
-                type="string",
-                description="Project name (uses default from credentials if empty)",
-                required=False,
-                default="",
-            ),
-            ToolParameter(
-                name="hours_back",
-                type="number",
-                description="Number of hours to look back (default: 24)",
-                required=False,
-                default=24,
-            ),
-            ToolParameter(
-                name="limit",
-                type="number",
-                description="Maximum runs to search through (default: 50)",
-                required=False,
-                default=50,
-            ),
-            ToolParameter(
-                name="include_children",
-                type="boolean",
-                description="Search in child runs too (default: True)",
-                required=False,
-                default=True,
-            ),
-        ],
-        arg_model=SearchLangsmithRunsArgs,
-    )
-    async def search_langsmith_runs_registry(
+    @mcp.tool()
+    async def search_langsmith_runs(
         environment: str,
         search_text: str,
         project_name: str = "",
@@ -412,7 +187,16 @@ if is_langsmith_configured():
         limit: int = 50,
         include_children: bool = True,
     ) -> dict:
-        """Search for LangSmith conversations containing specific text content."""
+        """Search for LangSmith conversations containing specific text content.
+
+        Args:
+            environment: Environment to query ('prod', 'dev', 'local')
+            search_text: The text to search for (case-insensitive). Use unique identifiers for best results.
+            project_name: Project name (uses default from credentials if empty)
+            hours_back: Number of hours to look back (default: 24)
+            limit: Maximum runs to search through (default: 50)
+            include_children: Search in child runs too (default: True)
+        """
         debugger = get_langsmith_debugger(environment)
 
         try:
@@ -452,53 +236,21 @@ if is_langsmith_configured():
             "tip": "Use get_langsmith_run_details with a run_id to get full conversation details",
         }
 
-
-# Register search_run_content tool
-if is_langsmith_configured():
-
-    @debug_tool(
-        name="search_run_content",
-        description="Search within a previously fetched LangSmith run's content using semantic similarity",
-        category="langsmith",
-        parameters=[
-            ToolParameter(
-                name="reference_id",
-                type="string",
-                description="The reference_id returned by get_langsmith_run_details()",
-                required=True,
-            ),
-            ToolParameter(
-                name="query",
-                type="string",
-                description="What to search for (text, keywords, or semantic queries)",
-                required=True,
-            ),
-            ToolParameter(
-                name="search_type",
-                type="string",
-                description=(
-                    "Search method: 'auto' (semantic, default), 'keyword' (exact), 'similar' (explicit semantic)"
-                ),
-                required=False,
-                default="auto",
-            ),
-            ToolParameter(
-                name="max_results",
-                type="number",
-                description="Maximum number of matching chunks to return (default: 5)",
-                required=False,
-                default=5,
-            ),
-        ],
-        arg_model=SearchRunContentArgs,
-    )
-    async def search_run_content_registry(
+    @mcp.tool()
+    async def search_run_content(
         reference_id: str,
         query: str,
         search_type: str = "auto",
         max_results: int = 5,
     ) -> dict:
-        """Search within a previously fetched LangSmith run's content using semantic similarity."""
+        """Search within a previously fetched LangSmith run's content using semantic similarity.
+
+        Args:
+            reference_id: The reference_id returned by get_langsmith_run_details()
+            query: What to search for (text, keywords, or semantic queries)
+            search_type: Search method: 'auto' (semantic, default), 'keyword' (exact), 'similar' (explicit semantic)
+            max_results: Maximum number of matching chunks to return (default: 5)
+        """
         memory = get_memory_store()
         stored_run = memory.get(reference_id)
 
@@ -535,32 +287,14 @@ if is_langsmith_configured():
             "tip": "Use get_run_field(reference_id, path) to get the full content at a specific path",
         }
 
+    @mcp.tool()
+    async def get_run_field(reference_id: str, field_path: str) -> dict:
+        """Get a specific field from a previously fetched LangSmith run.
 
-# Register get_run_field tool
-if is_langsmith_configured():
-
-    @debug_tool(
-        name="get_run_field",
-        description="Get a specific field from a previously fetched LangSmith run",
-        category="langsmith",
-        parameters=[
-            ToolParameter(
-                name="reference_id",
-                type="string",
-                description="The reference_id from get_langsmith_run_details()",
-                required=True,
-            ),
-            ToolParameter(
-                name="field_path",
-                type="string",
-                description="Dot-notation path to the field (e.g., 'outputs.chat_history.2.content')",
-                required=True,
-            ),
-        ],
-        arg_model=GetRunFieldArgs,
-    )
-    async def get_run_field_registry(reference_id: str, field_path: str) -> dict:
-        """Get a specific field from a previously fetched LangSmith run."""
+        Args:
+            reference_id: The reference_id from get_langsmith_run_details()
+            field_path: Dot-notation path to the field (e.g., 'outputs.chat_history.2.content')
+        """
         memory = get_memory_store()
         stored_run = memory.get(reference_id)
 
